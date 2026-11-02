@@ -1,0 +1,7 @@
+{
+  "name": "vae-lightstick",
+  "compatibility_date": "2026-11-03",
+  "assets": {
+    "directory": "./dist"
+  }
+}
