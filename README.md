@@ -12,7 +12,7 @@
 
 ## 网页控制台
 
-[web/](web/README.md) 是基于 Vue 与 Web Serial 的网页控制台，通过 USB 直连 Flipper Zero。支持 G1–G8 分组开关、颜色选择、G7／G8 双色预设、自动关灯和独立的全部关灯按钮。详细运行方式、通信过程与文件说明见 [web/README.md](web/README.md)。
+[web/](web/README.md) 是基于 Vue 的网页控制台，支持 Web Serial 与 WebUSB，通过 USB 直连 Flipper Zero。支持 G1–G8 分组开关、颜色选择、G7／G8 双色预设、自动关灯和独立的全部关灯按钮。详细运行方式、通信过程与文件说明见 [web/README.md](web/README.md)。
 
 构建环境使用 **Node.js 24.22.2（24 LTS）** 和 **npm 12.2.1**；Node 版本记录在 `web/.node-version`。
 

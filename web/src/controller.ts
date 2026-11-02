@@ -1,6 +1,7 @@
 import { computed, defineComponent, reactive, ref, shallowRef } from 'vue'
 import Icon from './Icon.vue'
 import { FlipperSerial } from './flipper'
+import type { ConnectionMethod } from './flipper'
 import { OFF, displayColor, hexColor } from './protocol'
 import type { GroupColors, Rgb } from './protocol'
 
@@ -27,6 +28,14 @@ export default defineComponent({
     const messageKind = ref<'idle' | 'success' | 'error'>('idle')
     const activeScene = ref('')
     const serialSupported = 'serial' in navigator && window.isSecureContext
+    const usbSupported = 'usb' in navigator && window.isSecureContext
+    const connectionMethod = ref<ConnectionMethod>(
+      usbSupported && (/Android/i.test(navigator.userAgent) || !serialSupported) ? 'usb' : 'serial',
+    )
+    const connectionSupported = computed(() =>
+      connectionMethod.value === 'usb' ? usbSupported : serialSupported,
+    )
+    const transportLabel = computed(() => connectionMethod.value === 'usb' ? 'USB · WebUSB' : 'USB · Web Serial')
     const selection = computed(() => groups.filter((group) => group.enabled))
     const visibleGroups = computed(() =>
       showAll.value
@@ -138,7 +147,7 @@ export default defineComponent({
       }
       try {
         if (action === 'connect') {
-          const device = await flipper.connect(progress)
+          const device = await flipper.connect(progress, connectionMethod.value)
           deviceName.value = device.name
           firmware.value = device.firmware
           connected.value = true
@@ -171,7 +180,7 @@ export default defineComponent({
         const cancelled =
           error instanceof DOMException && error.name === 'NotFoundError'
         message.value = cancelled
-          ? '已取消设备选择。'
+          ? '未选择设备。若列表为空，请检查手机 OTG 和数据线，或切换 USB 连接方式再试。'
           : error instanceof Error
             ? error.message
             : String(error)
@@ -193,6 +202,10 @@ export default defineComponent({
       message,
       messageKind,
       serialSupported,
+      usbSupported,
+      connectionMethod,
+      connectionSupported,
+      transportLabel,
       selection,
       visibleGroups,
       currentHex,

@@ -12,8 +12,13 @@
         <span>VAE <span class="brand-light">LIGHTSTICK</span><small>把现场的光，带回家。</small></span>
       </a>
       <div class="header-right">
+        <select v-if="!connected && (serialSupported || usbSupported)" v-model="connectionMethod"
+          class="connection-method" aria-label="USB 连接方式" :disabled="busy">
+          <option value="serial" :disabled="!serialSupported">电脑 USB 串口</option>
+          <option value="usb" :disabled="!usbSupported">安卓 USB 直连</option>
+        </select>
         <span class="connection-badge" :class="{ connected }"><i />{{ connected ? deviceName : '设备未连接' }}</span>
-        <button v-if="!connected" class="button button-connect" :disabled="busy || !serialSupported"
+        <button v-if="!connected" class="button button-connect" :disabled="busy || !connectionSupported"
           @click="perform('connect')">
           <Icon name="usb" />{{ busy ? '正在连接…' : '连接 Flipper' }}
         </button>
@@ -35,9 +40,9 @@
         </button>
       </div>
 
-      <div v-if="!serialSupported" class="compatibility-message" role="alert">
-        <Icon name="info" /><span>请使用桌面版 Chrome 或 Edge，通过 localhost 或 HTTPS
-          打开本页面，才能连接 Flipper。</span>
+      <div v-if="!connectionSupported" class="compatibility-message" role="alert">
+        <Icon name="info" /><span>当前浏览器无法通过 USB 连接 FZ。电脑使用 Chrome／Edge，安卓使用支持 USB 设备访问的浏览器，并通过 HTTPS 打开页面。iPhone 的普通
+          Safari 暂不支持此 USB 连接。</span>
       </div>
 
       <div class="workspace">
@@ -190,7 +195,7 @@
         <Icon v-else :name="messageKind === 'success' ? 'check' : 'info'" />
         <p>{{ message }}</p>
         <span class="status-transport">{{
-          connected ? firmware || 'USB 已连接' : 'USB · Web Serial'
+          connected ? firmware || 'USB 已连接' : transportLabel
         }}</span>
       </div>
 
@@ -200,8 +205,11 @@
         </summary>
         <ol>
           <li>
-            将开机的 Flipper Zero 通过数据线连接电脑，插好 microSD
+            将开机的 Flipper Zero 通过数据线连接电脑或安卓手机，插好 microSD
             卡，并停在设备主界面。
+          </li>
+          <li>
+            电脑选择“电脑 USB 串口”；安卓选择“安卓 USB 直连”。若手机的串口设备列表为空，可用 USB 直连方式重新选择设备，并确认已开启 OTG。
           </li>
           <li>
             关闭占用串口的 qFlipper 或其他网页，点击“连接

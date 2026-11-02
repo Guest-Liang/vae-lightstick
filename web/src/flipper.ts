@@ -1,5 +1,8 @@
 import { OFF, buildLegacyOff, buildPacket, buildRaw } from './protocol'
 import type { GroupColors } from './protocol'
+import { UsbCdcPort } from './usb'
+
+export type ConnectionMethod = 'serial' | 'usb'
 
 const DIRECTORY = '/ext/subghz/vae-lightstick-web'
 const PROMPT = '>: '
@@ -7,7 +10,7 @@ type Progress = (message: string) => void
 
 /** Browser-side CLI client written here; no firmware or Python CLI code copied. */
 export class FlipperSerial {
-  private port?: SerialPort
+  private port?: SerialPort | UsbCdcPort
   private reader?: ReadableStreamDefaultReader<Uint8Array>
   private writer?: WritableStreamDefaultWriter<Uint8Array>
   private buffer = ''
@@ -18,11 +21,20 @@ export class FlipperSerial {
 
   async connect(
     progress: Progress,
+    method: ConnectionMethod = 'serial',
   ): Promise<{ name: string; firmware: string }> {
-    this.port = await navigator.serial.requestPort({
-      filters: [{ usbVendorId: 0x0483, usbProductId: 0x5740 }],
-    })
-    progress('正在打开 USB 串口…')
+    if (method === 'usb') {
+      const device = await navigator.usb.requestDevice({
+        filters: [{ vendorId: 0x0483, productId: 0x5740 }],
+      })
+      this.port = new UsbCdcPort(device)
+      progress(`已找到 ${device.productName || 'Flipper Zero'}，正在打开 USB 数据接口…`)
+    } else {
+      this.port = await navigator.serial.requestPort({
+        filters: [{ usbVendorId: 0x0483, usbProductId: 0x5740 }],
+      })
+      progress('正在打开 USB 串口…')
+    }
     await this.port.open({ baudRate: 115200 })
     await this.port.setSignals({ dataTerminalReady: true })
     if (!this.port.readable || !this.port.writable)
@@ -33,7 +45,7 @@ export class FlipperSerial {
     await this.until(PROMPT)
     progress('正在确认 Flipper 响应…')
     const info = await this.command('device_info')
-    if (!info.includes('hardware_model'))
+    if (!/hardware_model\s*:\s*Flipper Zero\s*(?:\r?\n|$)/.test(info))
       throw new Error('未收到 Flipper 的有效握手回复。')
     await this.command('storage stat "/ext"')
     await this.command(`storage mkdir "${DIRECTORY}"`, 'file/dir already exist')

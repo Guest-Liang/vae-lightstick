@@ -1,10 +1,10 @@
 # 网页灯光控制台
 
-Vue + TypeScript 单页应用，通过浏览器的 Web Serial API 直连 Flipper Zero。没有 Python 服务端，不需要在网页和 FZ 之间再运行一个本地代理。
+Vue + TypeScript 单页应用，通过浏览器的 Web Serial（电脑串口）或 WebUSB（安卓 USB 直连）访问 Flipper Zero。没有 Python 服务端，不需要在网页和 FZ 之间再运行一个本地代理。
 
 ## 本地运行
 
-需要 **Node.js 24 LTS**、**npm 12.2.1 或更新版本**，以及桌面版 Chrome 或 Edge。
+需要 **Node.js 24 LTS**、**npm 12.2.1 或更新版本**，以及支持相应 USB 接口的 Chrome 或 Edge。
 
 本项目固定使用 **Node.js 24.22.2**，版本记录在 `.node-version`；`package.json` 的 `engines.node` 限定为 `^24.22.2`，`packageManager` 记录 `npm@12.2.1`。
 
@@ -16,6 +16,14 @@ npm run dev
 ```
 
 打开终端显示的 <http://localhost:5173>。使用支持数据传输的 USB 线连接开机的 FZ，插好 microSD 卡，退出 FZ 上的其他应用并关闭占用串口的 qFlipper／其他网页，然后点击“连接 Flipper”。在浏览器弹窗中选择 FZ。
+
+### 安卓串口列表为空时
+
+在页面右上角选择 **安卓 USB 直连**，再点击“连接 Flipper”。这次应出现 **USB 设备**选择框，而不是串行端口选择框；在其中选择 Flipper Zero，允许浏览器访问。安卓会在浏览器提供 WebUSB 时默认选择这一方式。
+
+USB 直连直接使用 FZ 的 CDC-ACM 数据接口，不依赖 Android 系统是否将它注册为串口。手机需要支持 USB Host／OTG，使用可传输数据的线，并访问部署后的 HTTPS 页面。如果 USB 设备列表仍为空，继续检查 OTG、数据线和浏览器的 USB 访问支持。
+
+电脑继续使用 **电脑 USB 串口**；桌面系统的 CDC 驱动可能已经占用 USB 接口，USB 直连不作为桌面默认路径。普通 iPhone Safari 没有这两种网页 USB 接口，不能因更换为 USB-C 就使用本页面连接 FZ。
 
 需要固件提供 CLI `js` 命令以及 `subghz` JavaScript 模块。连接时会读取 `device_info`、检查 SD 卡、准备控制文件并运行一个只加载模块的探测脚本；收到有效回复后才显示已连接，连接本身不会发射信号。
 
@@ -41,7 +49,7 @@ npm run dev
 ## 通信与设备文件
 
 ```text
-Vue 页面 → Web Serial / USB CDC → FZ CLI
+Vue 页面 → Web Serial 或 WebUSB / USB CDC → FZ CLI
          → storage write_chunk 写入 RAW 与 JS
          → js 运行脚本 → subghz.transmitFile → 荧光棒
 ```
@@ -70,7 +78,7 @@ npm run build
 npm run preview
 ```
 
-`build` 先对 TypeScript 业务与通信代码进行类型检查，再编译 Vue 模板并输出静态文件到 `dist/`。可以部署到 HTTPS 静态站点，包括子路径。Web Serial 需要安全上下文：本地使用 localhost，远程部署使用 HTTPS；直接双击 HTML 或通过普通 HTTP 局域网地址访问不适合作为串口入口。浏览器使用要求见 [MDN Web Serial API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API)。
+`build` 先对 TypeScript 业务与通信代码进行类型检查，再编译 Vue 模板并输出静态文件到 `dist/`。可以部署到 HTTPS 静态站点，包括子路径。Web Serial 与 WebUSB 均需要安全上下文：本地使用 localhost，远程部署使用 HTTPS；直接双击 HTML 或通过普通 HTTP 局域网地址访问不适合作为串口入口。浏览器使用要求见 [MDN Web Serial API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API)。
 
 ## 文件与来源
 
@@ -80,8 +88,10 @@ npm run preview
 | `src/controller.ts` | 本项目编写的分组选择、配色草稿、已发送目标色、双色预设和页面交互逻辑 |
 | `src/style.css` | 本项目编写的界面、灯棒预览与响应式样式，无外部字体或图片依赖 |
 | `src/Icon.vue`、`public/favicon.svg` | 本项目编写的简单 SVG 界面图标与标识 |
-| `src/flipper.ts` | 本项目编写的 Web Serial 客户端：握手、CLI 文件上传、脚本准备和执行结果处理；根据 FZ CLI 行为实现，没有复制固件或 Python CLI 源码 |
+| `src/flipper.ts` | 本项目编写的 USB CLI 客户端：握手、CLI 文件上传、脚本准备和执行结果处理；根据 FZ CLI 行为实现，没有复制固件或 Python CLI 源码 |
+| `src/usb.ts` | 本项目新增的 WebUSB CDC-ACM 收发层：识别 FZ 的首对 CDC 接口、配置串口控制信号、进行 USB bulk 收发；复用 `flipper.ts` 的 CLI 流程 |
 | `src/protocol.ts` | 将 `research/led17.py` 的编码规则移植到 TypeScript；具体沿用与新增内容见下文 |
 | `src/main.ts`、`index.html` | Vue 应用入口 |
 | `vite.config.ts`、`tsconfig.json`、`src/vue.d.ts` | 本地开发、静态构建、类型检查配置，以及 Vue 文件导入声明 |
 | `package.json`、`package-lock.json` | 运行命令、精确版本与安装依赖树 |
+WebUSB 接口与使用条件参考 [Chrome WebUSB 文档](https://developer.chrome.com/docs/capabilities/build-for-webusb)。FZ 的 CDC 接口布局依据 [本次固件版本的 USB CDC 描述符](https://github.com/DarkFlippers/unleashed-firmware/blob/2f62b3ab5d767c41e09ab17c6b5fbd175c8c4c85/targets/f7/furi_hal/furi_hal_usb_cdc.c)。
