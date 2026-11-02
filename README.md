@@ -10,6 +10,21 @@
 
 本次实测固件为 **Unleashed `unlshd-094e`**，需要固件带有可用的 `subghz` JavaScript 模块。其他固件或版本尚未实测。
 
+## 网页控制台
+
+[web/](web/README.md) 是基于 Vue 与 Web Serial 的网页控制台，通过 USB 直连 Flipper Zero。支持 G1–G8 分组开关、颜色选择、G7／G8 双色预设、自动关灯和独立的全部关灯按钮。详细运行方式、通信过程与文件说明见 [web/README.md](web/README.md)。
+
+构建环境使用 **Node.js 24.22.2（24 LTS）** 和 **npm 12.2.1**；Node 版本记录在 `web/.node-version`。
+
+```sh
+cd web
+npm install --global npm@12.2.1
+npm ci
+npm run dev
+```
+
+用桌面版 Chrome 或 Edge 打开终端中的 localhost 地址，再点击“连接 Flipper”。
+
 ## 验证有效的协议结构
 
 下面描述的是本项目已经跑通的生成规则

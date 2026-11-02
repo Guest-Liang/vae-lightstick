@@ -1,0 +1,26 @@
+{
+  "name": "vae-lightstick-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host localhost",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host localhost"
+  },
+  "engines": {
+    "node": "^24.22.2",
+    "npm": ">=12.2.1"
+  },
+  "packageManager": "npm@12.2.1",
+  "dependencies": {
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/w3c-web-serial": "1.0.9",
+    "@vitejs/plugin-vue": "6.0.10",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}

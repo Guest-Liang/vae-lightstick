@@ -2,3 +2,6 @@ __pycache__/
 *.py[cod]
 .venv/
 research/output/
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
