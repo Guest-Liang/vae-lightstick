@@ -54,7 +54,7 @@ Vue 页面 → Web Serial 或 WebUSB / USB CDC → FZ CLI
          → js 运行脚本 → subghz.transmitFile → 荧光棒
 ```
 
-网页使用 `433920000 Hz`、OOK650 RAW、250 µs Manchester 半位宽、1000 µs 同步低电平，以及本项目恢复的 16 字节格式。颜色文件含 32 帧；自动关灯文件含 16 帧；全部关灯额外发送 8 帧旧格式关闭序列。网页代码不会修改固件、自动电源设置或频段限制。
+网页使用 `433920000 Hz`、OOK 调制的 RAW 波形、250 µs Manchester 半位宽、1000 µs 同步低电平，以及本项目恢复的 16 字节格式。颜色文件含 32 帧；自动关灯文件含 16 帧；全部关灯额外发送 8 帧旧格式关闭序列。射频配置使用 `FuriHalSubGhzPresetCustom`，保留固件原 Ook650 的寄存器值，**在波形生成层将 `PATABLE[1]` 固定为 `07`**，即近似 −25 dBm／0.0032 mW 低功率参考档（TI 典型值约 −25.3 dBm，实际辐射功率未测量）。所有颜色和关闭文件均使用同一配置。网页代码不会修改固件、自动电源设置或频段限制。
 
 运行时只在 FZ 的 `/ext/subghz/vae-lightstick-web/` 下创建／覆盖以下文件，不依赖 `research/example-generate.py` 的输出目录：
 

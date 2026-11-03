@@ -15,6 +15,13 @@ COLORS: dict[str, Color] = {
     "blue": (0, 0, 255),
 }
 FREQUENCY_HZ = 433_920_000
+# Keep the working Unleashed 094 Ook650 registers; PATABLE[1] is fixed to 0x07.
+# TI DN013 Table 2 gives typical -25.3 dBm, labelled approximately -25 dBm / 0.0032 mW.
+# Sources and the distinction from the lightstick protocol are in THIRD_PARTY_NOTICES.md.
+OOK650_REGISTERS = (
+    "02 0D 03 07 08 32 0B 06 14 00 13 00 12 30 11 32 10 17 "
+    "18 18 19 18 1D 91 1C 00 1B 07 20 FB 22 11 21 B6 00 00"
+)
 
 
 def checksum(data: bytes | list[int]) -> int:
@@ -108,7 +115,9 @@ def write_signal(target: Path, packet: bytes, **timing: int) -> dict:
     target.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "Filetype: Flipper SubGhz RAW File", "Version: 1",
-        f"Frequency: {FREQUENCY_HZ}", "Preset: FuriHalSubGhzPresetOok650Async",
+        f"Frequency: {FREQUENCY_HZ}", "Preset: FuriHalSubGhzPresetCustom",
+        "Custom_preset_module: CC1101",
+        f"Custom_preset_data: {OOK650_REGISTERS} 00 07 00 00 00 00 00 00",
         "Protocol: RAW",
     ]
     lines.extend(

@@ -40,20 +40,27 @@ npm run dev
 
 用桌面版 Chrome 或 Edge 打开终端中的 localhost 地址，再点击“连接 Flipper”。
 
-## 验证有效的协议结构
+## 协议结构与发射配置
 
-下面描述的是本项目已经跑通的生成规则
+下面的报文结构与时序已在样机上跑通。当前生成器使用固定低功率的自定义射频预设。
 
-| 参数 | 本次有效值 |
+| 参数 | 当前配置 |
 | --- | --- |
 | 载波 | 433.92 MHz |
-| 调制 | OOK，RAW 使用 `FuriHalSubGhzPresetOok650Async` |
+| 调制 | OOK，用载波的开／关传递数据 |
+| 波形文件 | Flipper SubGhz RAW，以微秒记录高／低电平的持续时间 |
+| 射频预设 | `FuriHalSubGhzPresetCustom`，保留原 Ook650 寄存器配置，仅调整功率表 |
+| 固定功率参考档 | 近似 −25 dBm，约 0.0032 mW；实际辐射功率未测量 |
 | 数据编码 | Manchester，MSB first |
 | 半位宽 | 250 us |
 | 同步低电平 | 1000 us |
 | 帧间额外间隔 | 0，连续发送 |
 | 扩展数组长度 | 16 字节 |
 | 单周期 | 65.5 ms |
+
+`FuriHalSubGhzPresetOok650Async` 是 FZ 内置预设的名称：`OOK` 表示开关键控，`650` 表示接收滤波器带宽约 650 kHz，`Async` 表示按外部时序异步输入／输出数据。
+
+当前使用同一组射频寄存器值，改用自定义预设将 CC1101 的 `PATABLE[1]` **固定为 `07`**；`PATABLE[0]` 保持 `00`，用于关闭载波。该设置在 [TI DN013 第 9 页表 2](https://www.ti.com/lit/an/swra151a/swra151a.pdf#page=9)中的典型值为 **−25.3 dBm**，本文以近似 −25 dBm／0.0032 mW 称呼。最初的协议实测使用内置 Ook650 预设，低功率对照另记于下文。射频配置来源见 [THIRD_PARTY_NOTICES.md](research/THIRD_PARTY_NOTICES.md#flipper-zero-射频配置)。
 
 每个分组的颜色用 8 bit表示：从高位到低位，蓝、绿、红各占 2 bit，最后 2 位固定填二进制 `11`。输入仍使用常见的 RGB 数值，每个分量为 `0～255`；编码时将每个分量除以 64 后向下取整，转换为 `0～3` 四个档位，再填入对应位置。
 

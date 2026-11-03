@@ -43,3 +43,11 @@
 采用内容：七分区颜色打包、250 us Manchester 半位宽、末两字节先发的线序以及可工作的 500 us 同步参考。`led17.py` 的编码与游程合并逻辑由本地研究版本整理而来。
 
 本项目将 RAW 正文长度从写死的 11 字节改为 `packet[:-2]`，使其支持完整扩展帧；增加第八组字段和三处校验；生成 FZ RAW 文件及自动关闭的 JS 脚本。保留旧七分区关闭帧作为关闭序列的一部分。
+
+## Flipper Zero 射频配置
+
+- 预设寄存器值：[Unleashed `unlshd-094e` 的 `cc1101_configs.c`](https://github.com/DarkFlippers/unleashed-firmware/blob/2f62b3ab5d767c41e09ab17c6b5fbd175c8c4c85/lib/subghz/devices/cc1101_configs.c#L76)。Python 和 TypeScript 中的 `OOK650_REGISTERS` 保留该 Ook650 预设的 17 组寄存器数值，用于延续已跑通的 OOK 配置。
+- 自定义文件格式：[Flipper 官方 `.sub` 文件说明](https://developer.flipper.net/flipperzero/doxygen/subghz_file_format.html)。生成器按其格式写入寄存器值、结束标记及 8 字节功率表。
+- 固定低功率值：[TI DN013，第 9 页表 2](https://www.ti.com/lit/an/swra151a/swra151a.pdf#page=9)中 433 MHz 功率表的 `07`，其典型值为 **−25.3 dBm**。本项目将其称为近似 −25 dBm／0.0032 mW；采用官方表中的实际条目。
+
+本项目将功率表固定为 `00 07 00 00 00 00 00 00`，一致应用于 Python 和网页生成的颜色及关闭文件。实际最远控制距离约 0-15 cm。

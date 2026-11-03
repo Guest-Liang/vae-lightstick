@@ -64,6 +64,7 @@ def main() -> None:
         (scripts / (name + ".js")).write_text("\n".join(lines), encoding="ascii")
         print(f"{name}: {details['packet_hex']} ({details['duration_us'] / 1e6:.3f}s)")
     print(f"已生成 11 个信号文件和 10 个 JS 脚本：{out}")
+    print("全部颜色和关闭文件固定使用近似 -25 dBm / 0.0032 mW 低功率预设（PATABLE[1] = 07）。")
     print("将 subghz 和 apps 下的对应目录复制到 FZ 的 microSD 卡。")
 
 
