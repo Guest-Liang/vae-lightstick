@@ -92,31 +92,44 @@
               </div>
               <span class="small-label">每分量 4 档</span>
             </div>
+            <div class="live-mode-row">
+              <label class="auto-off-option"><span class="toggle toggle-small"><input type="checkbox" role="switch"
+                    aria-label="实时模式" :checked="liveMode" :disabled="!connected || busy"
+                    @change="perform('live')" /><span class="toggle-track" /></span><span>实时模式
+                  <small>已选分组白光起步，手动关灯</small></span></label>
+              <span v-if="liveMode" class="small-label">{{ liveSending ? '正在发送最新配色…' : '划过色块即发送' }}</span>
+            </div>
             <p class="section-caption">
-              先选调色分组，再点颜色。每组独立保存，黑色表示关闭。
+              {{ liveMode ? '鼠标划过或手指拖过色块即可变色；统一操控会修改所有已开启的组。' : '先选调色分组，再点颜色。每组独立保存，黑色表示关闭。' }}
             </p>
             <div class="palette-groups" role="group" aria-label="选择当前调色分组">
+              <button v-if="liveMode" type="button" class="palette-group" :class="{ active: liveUnified }"
+                :aria-pressed="liveUnified" @click="liveUnified = true">统一操控</button>
               <button v-for="group in selection" :key="group.id" type="button" class="palette-group"
-                :class="{ active: editingGroupId === group.id }" :aria-label="`调色 G${group.id}`"
-                :aria-pressed="editingGroupId === group.id" @click="editingGroupId = group.id">
+                :class="{ active: (!liveMode || !liveUnified) && editingGroupId === group.id }"
+                :aria-label="`调色 G${group.id}`"
+                :aria-pressed="(!liveMode || !liveUnified) && editingGroupId === group.id"
+                @click="editingGroupId = group.id; liveUnified = false">
                 <i :style="{ background: displayColor(group.color) }" />G{{ group.id }}
               </button>
             </div>
             <div class="palette-summary">
               <span class="current-color-chip" :style="{ background: currentHex }" />
               <div class="current-color-info">
-                <span>G{{ editingGroupId }} 配色 <strong>{{ currentHex }}</strong></span>
+                <span>{{ liveMode && liveUnified ? '统一配色' : `G${editingGroupId} 配色` }} <strong>{{ currentHex
+                    }}</strong></span>
                 <small>RGB {{ currentColor.join(' · ') }}</small>
               </div>
             </div>
-            <div class="palette-grid" role="group" aria-label="64 色调色盘">
-              <button v-for="item in palette" :key="item.hex" type="button" class="palette-swatch"
-                :disabled="!editingGroup.enabled" :class="{ active: currentHex === item.hex }"
-                :style="{ background: item.hex }" :aria-label="item.hex === '#000000'
+            <div class="palette-grid" :class="{ 'is-live': liveMode }" role="group" aria-label="64 色调色盘"
+              @pointerdown="paintPalette" @pointermove="paintPalette" @pointerup="paintPalette">
+              <button v-for="(item, index) in palette" :key="item.hex" type="button" class="palette-swatch"
+                :data-palette-index="index" :disabled="!editingGroup.enabled"
+                :class="{ active: currentHex === item.hex }" :style="{ background: item.hex }" :aria-label="item.hex === '#000000'
                   ? '关灯色 #000000'
                   : `选择颜色 ${item.hex}`
                   " :aria-pressed="currentHex === item.hex" :title="`${item.hex} · RGB ${item.color.join(', ')}`"
-                @click="setColor(item.color)">
+                @click="setColor(item.color, $event)">
                 <span v-if="currentHex === item.hex" class="palette-check">
                   <Icon name="check" />
                 </span>
@@ -126,17 +139,24 @@
             <p v-if="!selection.length" class="selection-hint">
               先打开一个分组开关，再为它调色。
             </p>
+            <p v-if="liveMode" class="live-mode-note">
+              调色期间不会自动关灯，关闭实时模式会尝试全部关灯；关闭网页或拔掉 USB 前请确认灯棒已熄灭。
+            </p>
           </section>
 
           <section class="send-panel">
-            <label class="auto-off-option"><span class="toggle toggle-small"><input v-model="autoOff" type="checkbox"
-                  role="switch" aria-label="2 秒后自动关灯" /><span class="toggle-track" /></span><span>2
+            <label v-if="!liveMode" class="auto-off-option"><span class="toggle toggle-small"><input v-model="autoOff"
+                  type="checkbox" role="switch" aria-label="2 秒后自动关灯" /><span class="toggle-track" /></span><span>2
                 秒后自动关灯<small>只关闭本次选择的分组</small></span></label>
-            <button class="button button-send" :disabled="!connected || !selection.length || busy"
+            <span v-else class="live-manual-label">实时调色 · 手动关灯</span>
+            <button v-if="!liveMode" class="button button-send" :disabled="!connected || !selection.length || busy"
               @click="perform('send')">
               <span>{{ busy ? '正在处理…' : '发送颜色'
-                }}<small v-if="selection.length && !busy">{{ selection.length }} 个分组</small></span>
+              }}<small v-if="selection.length && !busy">{{ selection.length }} 个分组</small></span>
               <Icon name="arrow" />
+            </button>
+            <button v-else class="button button-off" :disabled="!connected || busy" @click="perform('off')">
+              <Icon name="power" />全部关灯
             </button>
           </section>
         </fieldset>
@@ -184,7 +204,7 @@
               </div>
               <span class="small-label">G7 + G8</span>
             </div>
-            <p class="section-caption">载入一个组合，再点击发送。</p>
+            <p class="section-caption">{{ liveMode ? '点击组合立即实时发送。' : '载入一个组合，再点击发送。' }}</p>
             <div class="scene-list">
               <button v-for="scene in scenes" :key="scene.name" class="scene-button"
                 :class="{ active: activeScene === scene.name }" :disabled="busy" @click="loadScene(scene)">
@@ -204,7 +224,7 @@
         <p>{{ message }}</p>
         <span class="status-transport">{{
           connected ? firmware || 'USB 已连接' : transportLabel
-        }}</span>
+          }}</span>
       </div>
 
       <details class="usage-help">
@@ -224,12 +244,13 @@
             Flipper”，在浏览器中选择设备。
           </li>
           <li>
-            打开需要控制的分组开关，调色或载入双色预设，再点击“发送颜色”。
+            打开需要控制的分组开关，调色或载入双色预设，再点击“发送颜色”；开启实时模式后可直接划过调色盘。
           </li>
           <li>
             “全部关灯”会向 G1–G8
             发送关闭指令，与当前分组选择无关。关闭自动关灯后，灯光会保留到下一条指令或断电。
           </li>
+          <li>离开前可关闭实时模式或点击“全部关灯”，确认实物熄灭后再关闭网页或断开 USB；浏览器的离页提醒不能保证送达关闭指令。</li>
         </ol>
         <p>
           需要固件提供可用的 subghz JavaScript

@@ -124,6 +124,11 @@ export class FlipperSerial {
     await this.runScript('off')
   }
 
+  async sendLive(colors: GroupColors): Promise<void> {
+    await this.writeFile('color.sub', buildRaw(buildPacket(colors), 3))
+    await this.runScript('hold')
+  }
+
   async close(): Promise<void> {
     this.port?.removeEventListener('disconnect', this.onDisconnect)
     // A removed USB device can already have errored streams; release their locks.

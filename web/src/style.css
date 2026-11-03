@@ -470,6 +470,30 @@ h2 {
   color: #a3a99f;
   white-space: nowrap;
 }
+.live-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid #eef0e8;
+}
+.live-mode-note {
+  margin-top: 18px;
+  color: #9c714b;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.live-manual-label {
+  color: #89947e;
+  font-size: 11px;
+}
+.palette-grid.is-live {
+  touch-action: none;
+  user-select: none;
+}
 .palette-groups {
   display: flex;
   flex-wrap: wrap;
