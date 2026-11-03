@@ -6,7 +6,22 @@
 
 **本项目依托上游公开工作完成。** 感谢 [HansZ8 / EncoreLightSticks](https://github.com/HansZ8/EncoreLightSticks) 公开采样、协议说明和波形，感谢 [wuhan005 / LightStick](https://github.com/wuhan005/LightStick) 提供可工作的参考实现。
 
-### Flipper Zero
+## 使用注意事项
+
+> [!Warning]
+> 本项目会通过 Flipper Zero 实际发射 **433.92 MHz 射频信号**。
+>
+>使用者应当核对当地的频段、发射功率和使用场景规定，只做近距离、低功率测试，避免在演出现场或可能干扰合法设备的环境中使用。
+
+> [!Important]
+在中国大陆，使用前还应注意：
+>
+>- **433 MHz 不是可任意发射的“免许可频段”。** 工信部明确说明，433.05–434.79 MHz 在部分欧洲国家属于指定的 ISM 应用频段，国内使用应遵守我国无线电管理规定。[工信部政策解读](https://www.miit.gov.cn/zwgk/zcjd/art/2020/art_7e6fe7b6653b411e9d9f0510df95e59d.html)。
+>- **免许可有设备及用途条件。** 根据[工信部 2019 年第 52 号公告](https://www.miit.gov.cn/zwgk/zcwj/wjfb/gg/art/2020/art_4f2c890530cc4837b2113cf977e249c4.html)，只有列入并符合《微功率短距离无线电发射设备目录和技术要求》的设备，才适用免频率使用许可、免无线电台执照和免型号核准的规定。
+>- **相关数值有明确适用范围。** 公告[附件第 3 页“（二）通用无线遥控设备”第 1 项](https://www.miit.gov.cn/cms_files/filemanager/oldfile/miit/n1146295/n1652858/n1652930/n4509607/c7545828/part/7545929.pdf#page=3)列出 433.05–434.79 MHz、发射功率不超过 **10 mW（e.r.p.，有效辐射功率）**、占用带宽不大于 **400 kHz**，并禁止用于无线控制玩具、模型等。符合频率和功率数值仍不足以单独认定适用该类别，还需核对用途、通用辐射发射要求等完整条件.
+>- **不得造成有害干扰。** 不得擅自扩大发射频率范围、加大发射功率（包括外接功放）或更改发射天线；产生有害干扰时，应立即停止使用，消除干扰后再继续。机场等电磁环境保护区域、重大任务期间及无线电管制期间还须遵守相应规定。见上述公告第二、四、五、九条。
+
+## Flipper Zero
 
 本次实测固件为 **Unleashed `unlshd-094e`**，需要固件带有可用的 `subghz` JavaScript 模块。其他固件或版本尚未实测。
 
@@ -14,7 +29,7 @@
 
 [web/](web/README.md) 是基于 Vue 的网页控制台，支持 Web Serial 与 WebUSB，通过 USB 直连 Flipper Zero。支持 G1–G8 分组开关、颜色选择、G7／G8 双色预设、自动关灯和独立的全部关灯按钮。详细运行方式、通信过程与文件说明见 [web/README.md](web/README.md)。
 
-构建环境使用 **Node.js 24.22.2（24 LTS）** 和 **npm 12.2.1**；Node 版本记录在 `web/.node-version`。
+构建环境使用 **Node.js 24.22.2** 和 **npm 12.2.1**；Node 版本记录在 `web/.node-version`。
 
 ```sh
 cd web
