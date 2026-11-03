@@ -97,7 +97,8 @@
                     aria-label="实时模式" :checked="liveMode" :disabled="!connected || busy"
                     @change="perform('live')" /><span class="toggle-track" /></span><span>实时模式
                   <small>已选分组白光起步，手动关灯</small></span></label>
-              <span v-if="liveMode" class="small-label">{{ liveSending ? '正在发送最新配色…' : '划过色块即发送' }}</span>
+              <span v-if="liveMode" class="small-label">{{ liveSending ? '正在发送最新配色…' : '划过色块即发送' }}<template
+                  v-if="lastLiveMs"> · {{ lastLiveMs }} ms（{{ (1000 / lastLiveMs).toFixed(1) }} 次/秒）</template></span>
             </div>
             <p class="section-caption">
               {{ liveMode ? '鼠标划过或手指拖过色块即可变色；统一操控会修改所有已开启的组。' : '先选调色分组，再点颜色。每组独立保存，黑色表示关闭。' }}
@@ -253,8 +254,7 @@
           <li>离开前可关闭实时模式或点击“全部关灯”，确认实物熄灭后再关闭网页或断开 USB；浏览器的离页提醒不能保证送达关闭指令。</li>
         </ol>
         <p>
-          需要固件提供可用的 subghz JavaScript
-          模块。连接过程会准备控制文件，但不会发射无线信号。
+          连接时会检查并按需安装配套的 FZ 原生应用，收到设备回复后即可控制；连接过程不会发射无线信号。
         </p>
       </details>
     </main>

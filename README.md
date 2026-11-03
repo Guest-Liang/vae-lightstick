@@ -23,11 +23,13 @@
 
 ## Flipper Zero
 
-本次实测固件为 **Unleashed `unlshd-094e`**，需要固件带有可用的 `subghz` JavaScript 模块。其他固件或版本尚未实测。
+本次使用固件为 **Unleashed `unlshd-094e`**。研究目录中的 JS 脚本需要 `subghz` JavaScript 模块；网页控制台使用配套的 [FZ 原生应用](native/README.md)，当前按 **F7 API `88.19`** 编译。其他固件或版本尚未完成兼容性验证。
 
 ## 网页控制台
 
 [web/](web/README.md) 是基于 Vue 的网页控制台，支持 Web Serial 与 WebUSB，通过 USB 直连 Flipper Zero。支持 G1–G8 分组开关、各组独立配色、G7／G8 双色预设、自动关灯和独立的全部关灯按钮。实时模式沿用当前分组选择，以已选组白光开始，可用鼠标划过或手指拖过调色盘，选择单组调色或统一操控；调色期间手动关灯，关闭实时模式时也会尝试发送全部关灯指令。详细运行方式、通信延迟与文件说明见 [web/README.md](web/README.md)。
+
+连接时会检查并按需安装原生应用，然后发送短颜色命令，由 FZ 在内存中生成波形。相同 3 帧配置下，本机 USB CLI 测速由旧路径约 1.57 秒／次改善到约 **216 ms／次（4.63 次／秒）**；测速范围与构建说明见 [native/README.md](native/README.md)。功率仍固定为原来的 `PA=07`。
 
 构建环境使用 **Node.js 24.22.2** 和 **npm 12.2.1**；Node 版本记录在 `web/.node-version`。
 
@@ -48,7 +50,7 @@ npm run dev
 | --- | --- |
 | 载波 | 433.92 MHz |
 | 调制 | OOK，用载波的开／关传递数据 |
-| 波形文件 | Flipper SubGhz RAW，以微秒记录高／低电平的持续时间 |
+| 波形表示 | 研究生成器输出 Flipper SubGhz RAW；原生应用在内存中生成高／低电平游程 |
 | 射频预设 | `FuriHalSubGhzPresetCustom`，保留原 Ook650 寄存器配置，仅调整功率表 |
 | 固定功率参考档 | 近似 −25 dBm，约 0.0032 mW；实际辐射功率未测量 |
 | 数据编码 | Manchester，MSB first |

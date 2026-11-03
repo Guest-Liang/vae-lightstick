@@ -1,12 +1,19 @@
-import { OFF, buildLegacyOff, buildPacket, buildRaw } from './protocol'
+import { encodeColor } from './protocol'
 import type { GroupColors } from './protocol'
 import { UsbCdcPort } from './usb'
+import nativeApplicationUrl from './native/vae_lightstick.fap?url'
+import { nativeApplication } from './native/manifest'
 
 export type ConnectionMethod = 'serial' | 'usb'
 
-const DIRECTORY = '/ext/subghz/vae-lightstick-web'
+const DIRECTORY = '/ext/apps/vae-lightstick'
+const APP_PATH = `${DIRECTORY}/vae_lightstick.fap`
 const PROMPT = '>: '
 type Progress = (message: string) => void
+
+function colorArgument(colors: GroupColors): string {
+  return colors.map(encodeColor).map(color => color.toString(16).padStart(2, '0')).join('')
+}
 
 /** Browser-side CLI client written here; no firmware or Python CLI code copied. */
 export class FlipperSerial {
@@ -16,6 +23,7 @@ export class FlipperSerial {
   private buffer = ''
   private decoder = new TextDecoder()
   private encoder = new TextEncoder()
+  private nativeReady = false
 
   constructor(private onDisconnect: () => void) { }
 
@@ -48,53 +56,44 @@ export class FlipperSerial {
     if (!/hardware_model\s*:\s*Flipper Zero\s*(?:\r?\n|$)/.test(info))
       throw new Error('未收到 Flipper 的有效握手回复。')
     await this.command('storage stat "/ext"')
-    await this.command(`storage mkdir "${DIRECTORY}"`, 'file/dir already exist')
+    let loader = await this.command('loader info')
+    if (loader.includes('Application "VAE Lightstick" is running')) {
+      await this.command('vae exit')
+      for (let attempt = 0; attempt < 30; attempt++) {
+        loader = await this.command('loader info')
+        if (loader.includes('No application is running')) break
+        await new Promise(resolve => window.setTimeout(resolve, 50))
+      }
+    }
+    if (!loader.includes('No application is running'))
+      throw new Error('请先退出 FZ 上正在运行的其他应用，再连接灯光控制台。')
 
-    progress('正在准备灯光控制文件…')
-    await this.writeFile(
-      'off.sub',
-      buildRaw(buildPacket(Array(8).fill(OFF)), 16),
-    )
-    await this.writeFile('legacy-off.sub', buildRaw(buildLegacyOff(), 8, true))
-    // Probe only loads the module. Connecting never transmits radio signals.
-    await this.writeFile(
-      'probe.js',
-      'let radio = require("subghz");\nprint("VAE:READY");\n',
-    )
-    for (const mode of ['auto', 'hold', 'off']) {
-      const transmissions =
-        mode === 'off'
-          ? ['off.sub', 'legacy-off.sub']
-          : mode === 'auto'
-            ? ['color.sub', 'after.sub']
-            : ['color.sub']
-      const script = [
-        'let radio = require("subghz");',
-        'radio.setup();',
-        ...transmissions.map(
-          (file, index) =>
-            `let ok${index} = radio.transmitFile("${DIRECTORY}/${file}", 1);`,
-        ),
-        'radio.end();',
-        `print(${transmissions.map((_, index) => `ok${index}`).join(' && ')} ? "VAE:OK" : "VAE:FAILED");`,
-        '',
-      ].join('\n')
-      await this.writeFile(`${mode}.js`, script)
+    progress('正在检查配套的原生应用…')
+    const metadata = nativeApplication
+    await this.command(`storage mkdir "${DIRECTORY}"`, 'file/dir already exist')
+    const hash = await this.command(`storage md5 "${APP_PATH}"`, 'file/dir not exist')
+    if (hash.match(/\b[0-9a-f]{32}\b/i)?.[0]?.toLowerCase() !== metadata.md5) {
+      progress('正在安装配套的 FZ 原生应用…')
+      const binaryResponse = await fetch(nativeApplicationUrl)
+      if (!binaryResponse.ok) throw new Error('网页缺少原生应用文件，请重新部署完整构建。')
+      const bytes = new Uint8Array(await binaryResponse.arrayBuffer())
+      if (bytes.length !== metadata.size) throw new Error('下载的原生应用文件不完整。')
+      await this.writeFile(APP_PATH, bytes)
+      const installed = await this.command(`storage md5 "${APP_PATH}"`)
+      if (!installed.includes(metadata.md5)) throw new Error('FZ 上的原生应用文件校验失败，请重新连接。')
     }
-    const probe = await this.command(
-      `js ${DIRECTORY}/probe.js`,
-      undefined,
-      20_000,
-    )
-    if (
-      !probe.includes('VAE:READY') ||
-      !probe.includes('Script done!') ||
-      probe.includes('---- ERROR ----')
-    ) {
-      throw new Error(
-        'FZ 未能运行 subghz JavaScript 模块，请确认固件支持该模块，并退出设备上的其他应用。',
-      )
+    progress('正在启动原生发射应用…')
+    const launch = await this.command(`loader open "${APP_PATH}"`)
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const ready = await this.command('vae info', 'command not found')
+      if (ready.includes(`VAE:NATIVE ${metadata.protocol} PA=07 FREQ=433920000 LIVE=3`)) {
+        this.nativeReady = true
+        break
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 50))
     }
+    if (!this.nativeReady)
+      throw new Error(`FZ 原生应用未就绪，需要兼容 API ${metadata.api} 的固件。请检查设备屏幕。${launch.trim()}`)
     return {
       name:
         info.match(/hardware_name\s*:\s*([^\r\n]+)/)?.[1]?.trim() ||
@@ -109,28 +108,29 @@ export class FlipperSerial {
     after: GroupColors | null,
     progress: Progress,
   ): Promise<void> {
-    progress('正在确认设备响应…')
-    await this.command('device_info')
-    progress('正在写入本次颜色…')
-    await this.writeFile('color.sub', buildRaw(buildPacket(colors), 32))
-    if (after)
-      await this.writeFile('after.sub', buildRaw(buildPacket(after), 16))
     progress(after ? '正在发送颜色，随后自动关灯…' : '正在发送颜色…')
-    await this.runScript(after ? 'auto' : 'hold')
+    await this.nativeCommand(after
+      ? `auto ${colorArgument(colors)} ${colorArgument(after)}`
+      : `hold ${colorArgument(colors)}`)
   }
 
   async off(progress: Progress): Promise<void> {
     progress('正在发送全部关灯指令…')
-    await this.runScript('off')
+    await this.nativeCommand('off')
   }
 
-  async sendLive(colors: GroupColors): Promise<void> {
-    await this.writeFile('color.sub', buildRaw(buildPacket(colors), 3))
-    await this.runScript('hold')
+  async sendLive(colors: GroupColors): Promise<number> {
+    const started = performance.now()
+    await this.nativeCommand(`live ${colorArgument(colors)}`)
+    return Math.round(performance.now() - started)
   }
 
   async close(): Promise<void> {
     this.port?.removeEventListener('disconnect', this.onDisconnect)
+    if (this.nativeReady) {
+      this.nativeReady = false
+      await this.command('vae exit').catch(() => undefined)
+    }
     // A removed USB device can already have errored streams; release their locks.
     if (this.reader) {
       await this.reader.cancel().catch(() => undefined)
@@ -144,21 +144,11 @@ export class FlipperSerial {
     this.buffer = ''
   }
 
-  private async runScript(mode: string): Promise<void> {
-    const response = await this.command(
-      `js ${DIRECTORY}/${mode}.js`,
-      undefined,
-      30_000,
-    )
-    if (
-      !response.includes('VAE:OK') ||
-      !response.includes('Script done!') ||
-      response.includes('---- ERROR ----')
-    ) {
-      throw new Error(
-        'FZ 没有确认发送成功。请检查设备屏幕、SD 卡和 subghz 模块后重新连接。',
-      )
-    }
+  private async nativeCommand(command: string): Promise<void> {
+    const response = await this.command(`vae ${command}`, undefined, 12_000)
+    if (!/VAE:OK \d+/.test(response))
+      throw new Error(response.match(/VAE:ERROR[^\r\n]*/)?.[0] ||
+        'FZ 原生应用未确认发送完成。请检查设备屏幕后重新连接。')
   }
 
   private async command(
@@ -171,18 +161,16 @@ export class FlipperSerial {
     const error = response.match(/Storage error:\s*([^\r\n]+)/)?.[1]?.trim()
     if (error && error !== allowedError)
       throw new Error(`FZ 存储错误：${error}`)
-    if (/Command not found|Unknown command|command not found/i.test(response)) {
+    if (/Command not found|Unknown command|command not found/i.test(response) && allowedError !== 'command not found') {
       throw new Error(
-        'FZ 不支持所需的 CLI 命令，请确认当前固件带有 JavaScript 支持。',
+        'FZ 不支持所需的 CLI 命令，或原生应用已退出，请重新连接。',
       )
     }
     return response
   }
 
-  private async writeFile(name: string, text: string): Promise<void> {
-    const path = `${DIRECTORY}/${name}`
+  private async writeFile(path: string, bytes: Uint8Array): Promise<void> {
     await this.command(`storage remove "${path}"`, 'file/dir not exist')
-    const bytes = this.encoder.encode(text)
     for (let offset = 0; offset < bytes.length; offset += 8192) {
       const chunk = bytes.slice(offset, offset + 8192)
       await this.writer!.write(

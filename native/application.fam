@@ -1,0 +1,11 @@
+App(
+    appid="vae_lightstick",
+    name="VAE Lightstick",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="vae_lightstick_app",
+    stack_size=4 * 1024,
+    fap_category="Sub-GHz",
+    fap_version="0.1",
+    fap_author="Guest-Liang",
+    fap_description="USB-controlled LED17 lightsticks with fixed low TX power",
+)

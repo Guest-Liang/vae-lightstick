@@ -23,6 +23,7 @@ export default defineComponent({
     const liveMode = ref(false)
     const liveUnified = ref(true)
     const liveSending = ref(false)
+    const lastLiveMs = ref(0)
     const liveColors = shallowRef<GroupColors>(Array(8).fill(OFF))
     let pendingLiveColors: GroupColors | null = null
     let liveTask: Promise<void> | null = null
@@ -157,7 +158,7 @@ export default defineComponent({
         while (liveMode.value && pendingLiveColors) {
           const colors = pendingLiveColors
           pendingLiveColors = null
-          await flipper.sendLive(colors)
+          lastLiveMs.value = await flipper.sendLive(colors)
           heldColors.value = colors
         }
         if (liveMode.value) {
@@ -286,6 +287,7 @@ export default defineComponent({
             for (const group of selection.value) group.color = white
             liveColors.value = colors
             liveMode.value = true
+            lastLiveMs.value = 0
             activeScene.value = ''
             if (selection.value.length) {
               await flipper.send(colors, null, progress)
@@ -326,6 +328,7 @@ export default defineComponent({
       liveMode,
       liveUnified,
       liveSending,
+      lastLiveMs,
       connected,
       busy,
       deviceName,

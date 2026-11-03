@@ -5,3 +5,7 @@ research/output/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+native/dist/
+native/.vscode/
+native/.ufbt/
+native/.env

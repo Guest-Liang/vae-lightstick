@@ -46,8 +46,14 @@
 
 ## Flipper Zero 射频配置
 
-- 预设寄存器值：[Unleashed `unlshd-094e` 的 `cc1101_configs.c`](https://github.com/DarkFlippers/unleashed-firmware/blob/2f62b3ab5d767c41e09ab17c6b5fbd175c8c4c85/lib/subghz/devices/cc1101_configs.c#L76)。Python 和 TypeScript 中的 `OOK650_REGISTERS` 保留该 Ook650 预设的 17 组寄存器数值，用于延续已跑通的 OOK 配置。
+- 预设寄存器值：[Unleashed `unlshd-094e` 的 `cc1101_configs.c`](https://github.com/DarkFlippers/unleashed-firmware/blob/2f62b3ab5d767c41e09ab17c6b5fbd175c8c4c85/lib/subghz/devices/cc1101_configs.c#L76)。Python 和 TypeScript 中的 `OOK650_REGISTERS`，以及原生 C 应用的 `vae_preset`，保留该 Ook650 预设的 17 组寄存器数值，用于延续已跑通的 OOK 配置。
 - 自定义文件格式：[Flipper 官方 `.sub` 文件说明](https://developer.flipper.net/flipperzero/doxygen/subghz_file_format.html)。生成器按其格式写入寄存器值、结束标记及 8 字节功率表。
 - 固定低功率值：[TI DN013，第 9 页表 2](https://www.ti.com/lit/an/swra151a/swra151a.pdf#page=9)中 433 MHz 功率表的 `07`，其典型值为 **−25.3 dBm**。本项目将其称为近似 −25 dBm／0.0032 mW；采用官方表中的实际条目。
 
-本项目将功率表固定为 `00 07 00 00 00 00 00 00`，一致应用于 Python 和网页生成的颜色及关闭文件。实际最远控制距离约 0-15 cm。
+本项目将功率表固定为 `00 07 00 00 00 00 00 00`，一致应用于 Python／TypeScript 生成器和原生 C 应用的颜色及关闭波形。实际最远控制距离约 0-15 cm。
+
+## 原生应用与网页接入
+
+`native/vae_lightstick.c` 的校验、Manchester 和组帧规则由本项目已有的 Python／TypeScript 实现移植。
+
+应用调用 FZ 提供的 [Sub-GHz 异步发射 API](https://developer.flipper.net/flipperzero/doxygen/furi__hal__subghz_8h.html) 与 [CLI 注册 API](https://github.com/DarkFlippers/unleashed-firmware/blob/2f62b3ab5d767c41e09ab17c6b5fbd175c8c4c85/lib/toolbox/cli/cli_registry.h)。`native/package.py` 根据 [FAP 元数据格式](https://github.com/DarkFlippers/unleashed-firmware/blob/2f62b3ab5d767c41e09ab17c6b5fbd175c8c4c85/scripts/fbt/elfmanifest.py)读取编译产物的 SDK API。
