@@ -161,6 +161,17 @@ svg {
   width: 17px;
   height: 17px;
 }
+.github-link {
+  margin-left: auto;
+  white-space: nowrap;
+  border-color: #dfad8d;
+  background: #fff0e4;
+  color: #9e4d27;
+}
+.github-link:hover {
+  border-color: #cc875e;
+  background: #ffe2cc;
+}
 .button-connect {
   background: #27332f;
   color: #fff;
@@ -1145,6 +1156,15 @@ h2 {
 }
 
 @media (max-width: 1050px) {
+  .site-header {
+    flex-wrap: wrap;
+    padding: 16px 0;
+    row-gap: 14px;
+  }
+  .header-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
   .palette-grid {
     grid-template-columns: repeat(8, minmax(0, 1fr));
   }
@@ -1210,9 +1230,18 @@ h2 {
     letter-spacing: 1px;
   }
   .header-right {
-    flex-direction: column;
-    align-items: stretch;
+    justify-content: space-between;
     gap: 6px;
+  }
+  .github-link {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 11px;
+    gap: 6px;
+  }
+  .github-link > svg {
+    width: 14px;
+    height: 14px;
   }
   .connection-method {
     min-height: 28px;

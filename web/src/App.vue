@@ -11,6 +11,11 @@
         </svg>
         <span>VAE <span class="brand-light">LIGHTSTICK</span><small>把现场的光，带回家。</small></span>
       </a>
+      <a href="https://github.com/Guest-Liang/vae-lightstick" class="button github-link" target="_blank"
+        rel="noreferrer" aria-label="GitHub 源码（在新标签页打开）">
+        GitHub 源码
+        <Icon name="external" />
+      </a>
       <div class="header-right">
         <select v-if="!connected && (serialSupported || usbSupported)" v-model="connectionMethod"
           class="connection-method" aria-label="USB 连接方式" :disabled="busy">
