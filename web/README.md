@@ -1,6 +1,8 @@
 # 网页灯光控制台
 
-Vue + TypeScript 单页应用，通过浏览器的 Web Serial（电脑串口）或 WebUSB（安卓 USB 直连）访问 Flipper Zero。没有 Python 服务端，不需要在网页和 FZ 之间再运行一个本地代理。
+Vue + TypeScript 单页应用，通过浏览器的 Web Serial（电脑串口）或 WebUSB（安卓 USB 直连）访问 Flipper Zero。
+
+在线网址：https://vae-lightstick.guestliang.icu/
 
 ## 本地运行
 
