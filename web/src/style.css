@@ -470,6 +470,36 @@ h2 {
   color: #a3a99f;
   white-space: nowrap;
 }
+.palette-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.palette-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 62px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #dfe3d8;
+  border-radius: 8px;
+  background: #fafbf7;
+  color: #74806c;
+  font-size: 12px;
+}
+.palette-group.active {
+  border-color: #dba584;
+  background: #fff4e9;
+  color: #9a5939;
+}
+.palette-group > i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #00000014;
+}
 .palette-summary {
   display: flex;
   align-items: center;

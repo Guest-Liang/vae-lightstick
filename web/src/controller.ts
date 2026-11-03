@@ -16,7 +16,9 @@ export default defineComponent({
         color: (index >= 6 ? [255, 85, 0] : OFF) as Rgb,
       })),
     )
-    const currentColor = ref<Rgb>([255, 85, 0])
+    const editingGroupId = ref(7)
+    const editingGroup = computed(() => groups[editingGroupId.value - 1]!)
+    const currentColor = computed(() => editingGroup.value.color)
     const heldColors = shallowRef<GroupColors>(Array(8).fill(OFF))
     const showAll = ref(false)
     const autoOff = ref(true)
@@ -101,15 +103,16 @@ export default defineComponent({
     })
 
     function setColor(color: Rgb) {
-      currentColor.value = color
-      for (const group of selection.value) group.color = color
+      editingGroup.value.color = color
       activeScene.value = ''
     }
 
     function toggleGroup(id: number) {
       const group = groups[id - 1]!
       group.enabled = !group.enabled
-      if (group.enabled) group.color = currentColor.value
+      if (group.enabled) editingGroupId.value = id
+      else if (editingGroupId.value === id && selection.value.length)
+        editingGroupId.value = selection.value[0]!.id
       activeScene.value = ''
     }
 
@@ -117,7 +120,6 @@ export default defineComponent({
       const enabled = selection.value.length !== 8
       for (const group of groups) {
         group.enabled = enabled
-        if (enabled) group.color = currentColor.value
       }
       if (enabled) showAll.value = true
       activeScene.value = ''
@@ -127,7 +129,7 @@ export default defineComponent({
       for (const group of groups) group.enabled = group.id >= 7
       groups[6]!.color = scene.colors[0]
       groups[7]!.color = scene.colors[1]
-      currentColor.value = scene.colors[0]
+      editingGroupId.value = 7
       activeScene.value = scene.name
       message.value = `已载入「${scene.name}」，点击“发送颜色”应用。`
       messageKind.value = 'idle'
@@ -193,6 +195,8 @@ export default defineComponent({
     return {
       groups,
       currentColor,
+      editingGroupId,
+      editingGroup,
       showAll,
       autoOff,
       connected,

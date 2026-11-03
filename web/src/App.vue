@@ -58,7 +58,7 @@
                 {{ selection.length === 8 ? '取消全选' : '全选' }}
               </button>
             </div>
-            <p class="section-caption">打开开关，让这个分组参与调色。</p>
+            <p class="section-caption">打开开关，让这个分组参与本次发送。</p>
             <div class="group-grid" :class="{ expanded: visibleGroups.length > 2 }">
               <label v-for="group in visibleGroups" :key="group.id" class="group-card"
                 :class="{ selected: group.enabled }">
@@ -93,18 +93,26 @@
               <span class="small-label">每分量 4 档</span>
             </div>
             <p class="section-caption">
-              点击色块，为选中的分组设色。黑色表示关闭。
+              先选调色分组，再点颜色。每组独立保存，黑色表示关闭。
             </p>
+            <div class="palette-groups" role="group" aria-label="选择当前调色分组">
+              <button v-for="group in selection" :key="group.id" type="button" class="palette-group"
+                :class="{ active: editingGroupId === group.id }" :aria-label="`调色 G${group.id}`"
+                :aria-pressed="editingGroupId === group.id" @click="editingGroupId = group.id">
+                <i :style="{ background: displayColor(group.color) }" />G{{ group.id }}
+              </button>
+            </div>
             <div class="palette-summary">
               <span class="current-color-chip" :style="{ background: currentHex }" />
               <div class="current-color-info">
-                <span>当前选色 <strong>{{ currentHex }}</strong></span>
+                <span>G{{ editingGroupId }} 配色 <strong>{{ currentHex }}</strong></span>
                 <small>RGB {{ currentColor.join(' · ') }}</small>
               </div>
             </div>
             <div class="palette-grid" role="group" aria-label="64 色调色盘">
               <button v-for="item in palette" :key="item.hex" type="button" class="palette-swatch"
-                :class="{ active: currentHex === item.hex }" :style="{ background: item.hex }" :aria-label="item.hex === '#000000'
+                :disabled="!editingGroup.enabled" :class="{ active: currentHex === item.hex }"
+                :style="{ background: item.hex }" :aria-label="item.hex === '#000000'
                   ? '关灯色 #000000'
                   : `选择颜色 ${item.hex}`
                   " :aria-pressed="currentHex === item.hex" :title="`${item.hex} · RGB ${item.color.join(', ')}`"
