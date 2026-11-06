@@ -151,9 +151,18 @@
           </section>
 
           <section class="send-panel">
-            <label v-if="!liveMode" class="auto-off-option"><span class="toggle toggle-small"><input v-model="autoOff"
-                  type="checkbox" role="switch" aria-label="2 秒后自动关灯" /><span class="toggle-track" /></span><span>2
-                秒后自动关灯<small>只关闭本次选择的分组</small></span></label>
+            <div v-if="!liveMode" class="timer-options">
+              <label class="auto-off-option"><span class="toggle toggle-small"><input v-model="autoOff" type="checkbox"
+                    role="switch" aria-label="自动关灯" /><span class="toggle-track" /></span><span>自动关灯
+                  <small>只关闭本次选择的分组</small></span></label>
+              <label v-if="autoOff" class="timer-duration"><input v-model.number="autoOffSeconds" type="number" min="1"
+                  max="3600" step="1" inputmode="numeric" aria-label="自动关灯秒数" />秒后</label>
+              <div v-if="autoOff" class="timer-presets" role="group" aria-label="常用关灯时间">
+                <button v-for="seconds in [2, 10, 30, 60]" :key="seconds" type="button"
+                  :class="{ active: autoOffSeconds === seconds }" :aria-pressed="autoOffSeconds === seconds"
+                  @click="autoOffSeconds = seconds">{{ seconds }} 秒</button>
+              </div>
+            </div>
             <span v-else class="live-manual-label">实时调色 · 手动关灯</span>
             <button v-if="!liveMode" class="button button-send" :disabled="!connected || !selection.length || busy"
               @click="perform('send')">
@@ -165,12 +174,51 @@
               <Icon name="power" />全部关灯
             </button>
           </section>
+
+          <section v-if="!liveMode" class="panel effect-panel" aria-labelledby="effect-heading">
+            <div class="section-heading">
+              <div class="section-title"><span class="step-number">03</span>
+                <h2 id="effect-heading">灯效播放</h2>
+              </div>
+              <span class="small-label">播放结束关闭所选组</span>
+            </div>
+            <p class="section-caption">选择上方分组，调好速度，一键开始。明灭交替使用各组当前配色。</p>
+            <div class="effect-options" role="group" aria-label="选择灯效">
+              <button v-for="effect in effects" :key="effect.id" type="button"
+                :class="{ active: effectId === effect.id }" :aria-pressed="effectId === effect.id"
+                @click="effectId = effect.id">
+                <strong>{{ effect.name }}</strong><small>{{ effect.caption }}</small>
+              </button>
+            </div>
+            <div class="effect-settings">
+              <label>每步间隔<select v-model.number="effectInterval" aria-label="灯效每步间隔">
+                  <option :value="500">0.5 秒</option>
+                  <option :value="1000">1 秒</option>
+                  <option :value="2000">2 秒</option>
+                </select></label>
+              <label>播放次数<select v-model.number="effectLoops" aria-label="灯效播放次数">
+                  <option v-for="loops in [1, 3, 5, 10]" :key="loops" :value="loops">{{ loops }} 轮</option>
+                  <option :value="0">连续播放</option>
+                </select></label>
+            </div>
+            <div class="effect-actions">
+              <button class="button button-connect" :disabled="!connected || !selection.length || busy"
+                @click="perform('play')">
+                <Icon name="play" />开始灯效
+              </button>
+              <button v-if="connected && deviceState?.mode !== 'idle'" class="button button-disconnect" :disabled="busy"
+                @click="perform('stop')">
+                <Icon name="stop" />停止并关灯
+              </button>
+            </div>
+            <p class="effect-note">灯效独立在 FZ 上运行，断开网页也会继续。再次发送颜色或开启实时模式会替换当前灯效和定时。</p>
+          </section>
         </fieldset>
 
         <aside class="preview-column">
           <section class="preview-panel" aria-labelledby="preview-heading">
             <div class="preview-header">
-              <h2 id="preview-heading">配色预览</h2>
+              <h2 id="preview-heading">{{ connected && deviceState?.mode === 'effect' ? '灯效目标色' : '配色预览' }}</h2>
               <span><i />PREVIEW</span>
             </div>
             <div class="lightstick-stage">
@@ -198,7 +246,8 @@
               <span class="preview-line" />
             </div>
             <p class="preview-note">
-              预览显示待发送配色；灯棒不会回传当前状态。
+              {{ connected && deviceState?.mode === 'effect' ? '预览跟随 FZ 最近发送的目标色；灯棒不会回传当前状态。' : '预览显示待发送配色；灯棒不会回传当前状态。'
+              }}
             </p>
           </section>
 
@@ -227,10 +276,15 @@
       <div class="status-line" :class="messageKind" role="status" aria-live="polite">
         <span v-if="busy" class="spinner" />
         <Icon v-else :name="messageKind === 'success' ? 'check' : 'info'" />
-        <p>{{ message }}</p>
+        <div class="status-copy"><strong>{{ activityLabel }}</strong>
+          <p>{{ message }}</p>
+        </div>
         <span class="status-transport">{{
           connected ? firmware || 'USB 已连接' : transportLabel
           }}</span>
+        <button class="button button-off mobile-off" :disabled="!connected || busy" @click="perform('off')">
+          <Icon name="power" />全部关灯
+        </button>
       </div>
 
       <details class="usage-help">
@@ -252,14 +306,16 @@
           <li>
             打开需要控制的分组开关，调色或载入双色预设，再点击“发送颜色”；开启实时模式后可直接划过调色盘。
           </li>
+          <li>自动关灯可设置 1～3600 秒，计时由 FZ 执行；灯效支持红蓝交换、四色轮播和明灭交替，停止或播放结束后关闭原先所选组。</li>
+          <li>FZ 本机：上下选项目、左右调整，短按 OK 发送，长按 OK 全部关灯。返回先停止正在运行的灯效或定时，再按返回退出。</li>
           <li>
             “全部关灯”会向 G1–G8
             发送关闭指令，与当前分组选择无关。关闭自动关灯后，灯光会保留到下一条指令或断电。
           </li>
-          <li>离开前可关闭实时模式或点击“全部关灯”，确认实物熄灭后再关闭网页或断开 USB；浏览器的离页提醒不能保证送达关闭指令。</li>
+          <li>断开 USB 后，FZ 应用和已启动的灯效、定时仍会运行。需要熄灭时，先点击“全部关灯”或长按 FZ 的 OK；单纯关闭网页不会关灯。</li>
         </ol>
         <p>
-          连接时会检查并按需安装配套的 FZ 原生应用，收到设备回复后即可控制；连接过程不会发射无线信号。
+          连接时会检查并按需安装网页配套的 FZ 原生应用。同一版本会沿用正在运行的应用；更新应用会先停止旧任务。
         </p>
       </details>
     </main>

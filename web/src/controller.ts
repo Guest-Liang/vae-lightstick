@@ -1,7 +1,7 @@
 import { computed, defineComponent, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import Icon from './Icon.vue'
 import { FlipperSerial } from './flipper'
-import type { ConnectionMethod } from './flipper'
+import type { ConnectionMethod, DeviceState, EffectId } from './flipper'
 import { OFF, displayColor, hexColor } from './protocol'
 import type { GroupColors, Rgb } from './protocol'
 
@@ -27,8 +27,20 @@ export default defineComponent({
     const liveColors = shallowRef<GroupColors>(Array(8).fill(OFF))
     let pendingLiveColors: GroupColors | null = null
     let liveTask: Promise<void> | null = null
+    let statusTask: Promise<void> | null = null
+    let statusTimer = 0
     const showAll = ref(false)
     const autoOff = ref(true)
+    const autoOffSeconds = ref(2)
+    const deviceState = shallowRef<DeviceState | null>(null)
+    const effects: { id: EffectId; name: string; caption: string }[] = [
+      { id: 1, name: '红蓝交换', caption: '相邻已选组红蓝交替，两步一轮。' },
+      { id: 2, name: '四色轮播', caption: '已选组同步轮播红、绿、蓝、白。' },
+      { id: 3, name: '明灭交替', caption: '各组按自己的当前配色亮起，再一起熄灭。' },
+    ]
+    const effectId = ref<EffectId>(1)
+    const effectInterval = ref(1000)
+    const effectLoops = ref(5)
     const connected = ref(false)
     const busy = ref(false)
     const deviceName = ref('Flipper Zero')
@@ -55,6 +67,16 @@ export default defineComponent({
     const selectionLabel = computed(() =>
       selection.value.map((group) => `G${group.id}`).join('、'),
     )
+    const activityLabel = computed(() => {
+      if (!connected.value) return '设备未连接'
+      const state = deviceState.value
+      if (state?.mode === 'timer') return `约 ${Math.ceil(state.remainingMs / 1000)} 秒后关闭所选组`
+      if (state?.mode === 'effect') {
+        const name = effects.find(effect => effect.id === state.effect)?.name ?? '灯效'
+        return `${name} · 第 ${state.step} 步${state.total ? ` / ${state.total}` : ' · 连续播放'}`
+      }
+      return liveMode.value ? '实时调色 · 手动关灯' : `${deviceName.value} 已连接`
+    })
     const palette = Array.from({ length: 64 }, (_, index) => {
       const color: Rgb = [
         (index >> 4) * 85,
@@ -116,6 +138,7 @@ export default defineComponent({
       else window.removeEventListener('beforeunload', warnBeforeLeave)
     })
     onBeforeUnmount(() => {
+      window.clearInterval(statusTimer)
       window.removeEventListener('beforeunload', warnBeforeLeave)
       liveMode.value = false
       pendingLiveColors = null
@@ -127,7 +150,7 @@ export default defineComponent({
       pendingLiveColors = null
       message.value = 'USB 已断开，重新连接后可以继续。'
       messageKind.value = 'error'
-      if (!busy.value && !liveTask) void flipper.close()
+      if (!busy.value && !liveTask && !statusTask) void flipper.close()
     })
 
     async function handleFailure(error: unknown) {
@@ -142,6 +165,37 @@ export default defineComponent({
       messageKind.value = cancelled ? 'idle' : 'error'
     }
 
+    function updateDevice(state: DeviceState) {
+      deviceState.value = state
+      heldColors.value = state.colors
+      if (!state.ok) {
+        message.value = 'FZ 最近一次发射失败，请检查设备后重新发送。'
+        messageKind.value = 'error'
+      }
+    }
+
+    // Poll only while the command lane is idle. User actions wait for this one
+    // outstanding read, so CLI replies cannot be consumed by the wrong caller.
+    statusTimer = window.setInterval(() => {
+      if (!connected.value || busy.value || liveTask || statusTask) return
+      statusTask = (async () => {
+        try {
+          const previousMode = deviceState.value?.mode
+          const state = await flipper.state()
+          updateDevice(state)
+          if (liveMode.value && !liveTask) liveColors.value = state.colors
+          if (previousMode && previousMode !== 'idle' && state.mode === 'idle' && state.ok) {
+            message.value = previousMode === 'timer' ? 'FZ 已完成定时关灯。' : '灯效已结束，FZ 已发送所选组的关闭指令。'
+            messageKind.value = 'success'
+          }
+        } catch (error) {
+          await handleFailure(error)
+        } finally {
+          statusTask = null
+        }
+      })()
+    }, 1000)
+
     function queueLive(colors: GroupColors) {
       if (colors.every((color, index) =>
         color.every((component, channel) => component === liveColors.value[index]![channel]),
@@ -155,11 +209,13 @@ export default defineComponent({
       liveSending.value = true
       messageKind.value = 'idle'
       try {
+        await statusTask
         while (liveMode.value && pendingLiveColors) {
           const colors = pendingLiveColors
           pendingLiveColors = null
-          lastLiveMs.value = await flipper.sendLive(colors)
-          heldColors.value = colors
+          const result = await flipper.sendLive(colors)
+          lastLiveMs.value = result.elapsedMs
+          updateDevice(result.state)
         }
         if (liveMode.value) {
           message.value = '实时颜色已发送。划过色块继续调色，关灯请点“全部关灯”。'
@@ -239,12 +295,19 @@ export default defineComponent({
 
     function targetColor(id: number): Rgb {
       if (liveMode.value) return liveColors.value[id - 1]!
+      if (connected.value && deviceState.value?.mode === 'effect') return heldColors.value[id - 1]!
       return groups[id - 1]!.enabled
         ? groups[id - 1]!.color
         : heldColors.value[id - 1]!
     }
 
-    async function perform(action: 'connect' | 'disconnect' | 'send' | 'off' | 'live') {
+    async function perform(action: 'connect' | 'disconnect' | 'send' | 'off' | 'live' | 'play' | 'stop') {
+      if (action === 'send' && autoOff.value &&
+        (!Number.isInteger(autoOffSeconds.value) || autoOffSeconds.value < 1 || autoOffSeconds.value > 3600)) {
+        message.value = '关灯时间请填写 1～3600 之间的整数秒。'
+        messageKind.value = 'error'
+        return
+      }
       busy.value = true
       messageKind.value = 'idle'
       const progress = (text: string) => {
@@ -256,27 +319,30 @@ export default defineComponent({
           pendingLiveColors = null
         if (action === 'disconnect') liveMode.value = false
         await liveTask
+        await statusTask
         if (action !== 'connect' && action !== 'disconnect' && !connected.value) return
         if (action === 'connect') {
           const device = await flipper.connect(progress, connectionMethod.value)
           deviceName.value = device.name
           firmware.value = device.firmware
+          updateDevice(await flipper.state())
           connected.value = true
           message.value = `${device.name} 已就绪，可以发送颜色了。`
         } else if (action === 'disconnect') {
           await flipper.close()
           connected.value = false
-          message.value = '已断开 Flipper。配色仍保留在页面中。'
+          message.value = 'USB 已断开，FZ 本机仍可操作，已启动的灯效和定时会继续执行。'
         } else if (action === 'off') {
-          await flipper.off(progress)
-          heldColors.value = Array(8).fill(OFF)
+          updateDevice(await flipper.off(progress))
           liveColors.value = Array(8).fill(OFF)
           message.value = '全部关灯指令已发送。'
+        } else if (action === 'stop') {
+          updateDevice(await flipper.stop())
+          message.value = '已停止灯效或定时，并发送原先所选组的关闭指令。'
         } else if (action === 'live') {
           if (liveMode.value) {
             liveMode.value = false
-            await flipper.off(progress)
-            heldColors.value = Array(8).fill(OFF)
+            updateDevice(await flipper.off(progress))
             liveColors.value = Array(8).fill(OFF)
             message.value = '已退出实时模式，并已发送全部关灯指令。'
           } else {
@@ -290,25 +356,30 @@ export default defineComponent({
             lastLiveMs.value = 0
             activeScene.value = ''
             if (selection.value.length) {
-              await flipper.send(colors, null, progress)
-              heldColors.value = colors
+              updateDevice(await flipper.send(colors, null, 0, progress))
               message.value = `实时模式已开启，${selectionLabel.value} 为白色。划过色块即可调色，关灯需手动操作。`
             } else {
+              if (deviceState.value?.mode !== 'idle') updateDevice(await flipper.stop())
+              liveColors.value = heldColors.value
               message.value = '实时模式已开启，先打开需要控制的分组开关，再划过色块调色。'
             }
           }
         } else {
-          const colors = groups.map((group) => targetColor(group.id))
-          const after = autoOff.value
-            ? colors.map((color, index) =>
-              groups[index]!.enabled ? OFF : color,
-            )
-            : null
-          await flipper.send(colors, after, progress)
-          heldColors.value = after ?? colors
-          message.value = autoOff.value
-            ? `${selectionLabel.value} 颜色指令已发送，并已追加关灯指令。`
-            : `${selectionLabel.value} 颜色指令已发送。`
+          const colors = groups.map(group => group.enabled ? group.color : heldColors.value[group.id - 1]!)
+          if (action === 'play') {
+            const mask = selection.value.reduce((value, group) => value | (1 << (group.id - 1)), 0)
+            message.value = '正在启动灯效…'
+            updateDevice(await flipper.play(effectId.value, mask, colors, effectInterval.value, effectLoops.value))
+            message.value = '灯效已交给 FZ 播放，完成或停止后会关闭本次所选组。'
+          } else {
+            const after = autoOff.value
+              ? colors.map((color, index) => groups[index]!.enabled ? OFF : color)
+              : null
+            updateDevice(await flipper.send(colors, after, autoOffSeconds.value, progress))
+            message.value = autoOff.value
+              ? `${selectionLabel.value} 颜色已发送，FZ 将在 ${autoOffSeconds.value} 秒后关闭所选组。`
+              : `${selectionLabel.value} 颜色指令已发送。`
+          }
         }
         messageKind.value = 'success'
       } catch (error) {
@@ -325,6 +396,13 @@ export default defineComponent({
       editingGroup,
       showAll,
       autoOff,
+      autoOffSeconds,
+      deviceState,
+      activityLabel,
+      effects,
+      effectId,
+      effectInterval,
+      effectLoops,
       liveMode,
       liveUnified,
       liveSending,

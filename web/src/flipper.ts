@@ -5,6 +5,16 @@ import nativeApplicationUrl from './native/vae_lightstick.fap?url'
 import { nativeApplication } from './native/manifest'
 
 export type ConnectionMethod = 'serial' | 'usb'
+export type EffectId = 1 | 2 | 3
+export type DeviceState = {
+  colors: GroupColors
+  mode: 'idle' | 'timer' | 'effect'
+  remainingMs: number
+  effect: 0 | EffectId
+  step: number
+  total: number
+  ok: boolean
+}
 
 const DIRECTORY = '/ext/apps/vae-lightstick'
 const APP_PATH = `${DIRECTORY}/vae_lightstick.fap`
@@ -13,6 +23,22 @@ type Progress = (message: string) => void
 
 function colorArgument(colors: GroupColors): string {
   return colors.map(encodeColor).map(color => color.toString(16).padStart(2, '0')).join('')
+}
+
+function parseState(response: string): DeviceState {
+  const match = response.match(/VAE:STATE ([0-9a-f]{16}) MODE=([0-2]) LEFT=(\d+) EFFECT=([0-3]) STEP=(\d+) TOTAL=(\d+) OK=([01])/i)
+  if (!match) throw new Error('FZ 未返回有效的灯光应用状态，请重新连接。')
+  const bytes = match[1]!.match(/../g)!.map(value => Number.parseInt(value, 16))
+  if (bytes.some(value => (value & 3) !== 3)) throw new Error('FZ 返回的颜色编码无效。')
+  return {
+    colors: bytes.map(value => [((value >> 2) & 3) * 85, ((value >> 4) & 3) * 85, (value >> 6) * 85]),
+    mode: (['idle', 'timer', 'effect'] as const)[Number(match[2])]!,
+    remainingMs: Number(match[3]),
+    effect: Number(match[4]) as DeviceState['effect'],
+    step: Number(match[5]),
+    total: Number(match[6]),
+    ok: match[7] === '1',
+  }
 }
 
 /** Browser-side CLI client written here; no firmware or Python CLI code copied. */
@@ -57,15 +83,8 @@ export class FlipperSerial {
       throw new Error('未收到 Flipper 的有效握手回复。')
     await this.command('storage stat "/ext"')
     let loader = await this.command('loader info')
-    if (loader.includes('Application "VAE Lightstick" is running')) {
-      await this.command('vae exit')
-      for (let attempt = 0; attempt < 30; attempt++) {
-        loader = await this.command('loader info')
-        if (loader.includes('No application is running')) break
-        await new Promise(resolve => window.setTimeout(resolve, 50))
-      }
-    }
-    if (!loader.includes('No application is running'))
+    let running = loader.includes('Application "VAE Lightstick" is running')
+    if (!running && !loader.includes('No application is running'))
       throw new Error('请先退出 FZ 上正在运行的其他应用，再连接灯光控制台。')
 
     progress('正在检查配套的原生应用…')
@@ -73,6 +92,17 @@ export class FlipperSerial {
     await this.command(`storage mkdir "${DIRECTORY}"`, 'file/dir already exist')
     const hash = await this.command(`storage md5 "${APP_PATH}"`, 'file/dir not exist')
     if (hash.match(/\b[0-9a-f]{32}\b/i)?.[0]?.toLowerCase() !== metadata.md5) {
+      if (running) {
+        progress('正在退出旧版本应用，准备更新…')
+        await this.command('vae exit')
+        for (let attempt = 0; attempt < 30; attempt++) {
+          loader = await this.command('loader info')
+          if (loader.includes('No application is running')) break
+          await new Promise(resolve => window.setTimeout(resolve, 50))
+        }
+        if (!loader.includes('No application is running')) throw new Error('旧版灯光应用尚未退出，请在 FZ 上按返回后重试。')
+        running = false
+      }
       progress('正在安装配套的 FZ 原生应用…')
       const binaryResponse = await fetch(nativeApplicationUrl)
       if (!binaryResponse.ok) throw new Error('网页缺少原生应用文件，请重新部署完整构建。')
@@ -83,7 +113,7 @@ export class FlipperSerial {
       if (!installed.includes(metadata.md5)) throw new Error('FZ 上的原生应用文件校验失败，请重新连接。')
     }
     progress('正在启动原生发射应用…')
-    const launch = await this.command(`loader open "${APP_PATH}"`)
+    const launch = running ? '' : await this.command(`loader open "${APP_PATH}"`)
     for (let attempt = 0; attempt < 30; attempt++) {
       const ready = await this.command('vae info', 'command not found')
       if (ready.includes(`VAE:NATIVE ${metadata.protocol} PA=07 FREQ=433920000 LIVE=3`)) {
@@ -106,31 +136,42 @@ export class FlipperSerial {
   async send(
     colors: GroupColors,
     after: GroupColors | null,
+    seconds: number,
     progress: Progress,
-  ): Promise<void> {
-    progress(after ? '正在发送颜色，随后自动关灯…' : '正在发送颜色…')
-    await this.nativeCommand(after
-      ? `auto ${colorArgument(colors)} ${colorArgument(after)}`
+  ): Promise<DeviceState> {
+    progress(after ? '正在发送颜色并设置关灯时间…' : '正在发送颜色…')
+    return this.nativeCommand(after
+      ? `auto ${colorArgument(colors)} ${colorArgument(after)} ${seconds}`
       : `hold ${colorArgument(colors)}`)
   }
 
-  async off(progress: Progress): Promise<void> {
+  async off(progress: Progress): Promise<DeviceState> {
     progress('正在发送全部关灯指令…')
-    await this.nativeCommand('off')
+    return this.nativeCommand('off')
   }
 
-  async sendLive(colors: GroupColors): Promise<number> {
+  async sendLive(colors: GroupColors): Promise<{ state: DeviceState; elapsedMs: number }> {
     const started = performance.now()
-    await this.nativeCommand(`live ${colorArgument(colors)}`)
-    return Math.round(performance.now() - started)
+    const state = await this.nativeCommand(`live ${colorArgument(colors)}`)
+    return { state, elapsedMs: Math.round(performance.now() - started) }
+  }
+
+  async play(effect: EffectId, mask: number, colors: GroupColors, interval: number, loops: number): Promise<DeviceState> {
+    return this.nativeCommand(`effect ${effect} ${mask} ${colorArgument(colors)} ${interval} ${loops}`)
+  }
+
+  async stop(): Promise<DeviceState> {
+    return this.nativeCommand('stop')
+  }
+
+  async state(): Promise<DeviceState> {
+    return parseState(await this.command('vae state'))
   }
 
   async close(): Promise<void> {
     this.port?.removeEventListener('disconnect', this.onDisconnect)
-    if (this.nativeReady) {
-      this.nativeReady = false
-      await this.command('vae exit').catch(() => undefined)
-    }
+    // FZ owns timers, effects and its local controls; closing USB leaves it running.
+    this.nativeReady = false
     // A removed USB device can already have errored streams; release their locks.
     if (this.reader) {
       await this.reader.cancel().catch(() => undefined)
@@ -144,11 +185,12 @@ export class FlipperSerial {
     this.buffer = ''
   }
 
-  private async nativeCommand(command: string): Promise<void> {
+  private async nativeCommand(command: string): Promise<DeviceState> {
     const response = await this.command(`vae ${command}`, undefined, 12_000)
     if (!/VAE:OK \d+/.test(response))
       throw new Error(response.match(/VAE:ERROR[^\r\n]*/)?.[0] ||
         'FZ 原生应用未确认发送完成。请检查设备屏幕后重新连接。')
+    return parseState(response)
   }
 
   private async command(

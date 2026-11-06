@@ -33,7 +33,7 @@ output = root.parent / "web" / "src" / "native"
 output.mkdir(parents=True, exist_ok=True)
 (output / binary.name).write_bytes(data)
 manifest = {
-    "protocol": 1,
+    "protocol": 2,
     "api": f"{api >> 16}.{api & 0xFFFF}",
     "size": len(data),
     "md5": hashlib.md5(data).hexdigest(),

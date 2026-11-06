@@ -4,6 +4,8 @@ defineProps<{ name: keyof typeof paths }>()
 const paths = {
   usb: 'M12 21V4m0 0L9 7m3-3 3 3M12 16H8a3 3 0 0 1-3-3v-2m7 1h4a3 3 0 0 0 3-3V6M3.5 11h3M17.5 3.5h3v3h-3z',
   power: 'M12 3v8m-5.7-6a9 9 0 1 0 11.4 0',
+  play: 'm8 5 11 7-11 7V5Z',
+  stop: 'M6 6h12v12H6z',
   arrow: 'M4 12h15m-6-6 6 6-6 6',
   chevron: 'm6 9 6 6 6-6',
   check: 'm5 12 4 4L19 6',
