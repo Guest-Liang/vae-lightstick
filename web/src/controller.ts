@@ -2,6 +2,8 @@ import { computed, defineComponent, onBeforeUnmount, reactive, ref, shallowRef, 
 import Icon from './Icon.vue'
 import { FlipperSerial } from './flipper'
 import type { ConnectionMethod, DeviceState, EffectId } from './flipper'
+import { MUSIC_SPECTRUM_MAX_HZ, MUSIC_SPECTRUM_POINTS, MusicPlayer } from './audio'
+import type { MusicEffect } from './audio'
 import { OFF, displayColor, hexColor } from './protocol'
 import type { GroupColors, Rgb } from './protocol'
 
@@ -29,6 +31,45 @@ export default defineComponent({
     let liveTask: Promise<void> | null = null
     let statusTask: Promise<void> | null = null
     let statusTimer = 0
+    const music = new MusicPlayer()
+    const musicActive = ref(false)
+    const musicFileName = ref('')
+    const musicError = ref('')
+    const musicDuration = ref(0)
+    const musicTime = ref(0)
+    const musicEnergy = ref(0)
+    const emptySpectrum = Array<number>(MUSIC_SPECTRUM_POINTS).fill(0)
+    const musicSpectrum = shallowRef<readonly number[]>(emptySpectrum)
+    const musicSpectrumTicks = [1, 10, 100, 1000, MUSIC_SPECTRUM_MAX_HZ].map(hz => ({
+      hz,
+      label: hz === 1 ? '1 Hz' : hz >= 1000 ? `${hz / 1000}k` : String(hz),
+      position: Math.log(hz) / Math.log(MUSIC_SPECTRUM_MAX_HZ) * 100,
+    }))
+    const musicSpectrumPath = computed(() => {
+      const values = musicSpectrum.value
+      const step = 1000 / (values.length - 1)
+      let path = `M0,${(100 - values[0]! * 100).toFixed(2)}`
+      for (let index = 1; index < values.length - 1; index++) {
+        const y = 100 - values[index]! * 100
+        const nextY = 100 - values[index + 1]! * 100
+        path += ` Q${(index * step).toFixed(1)},${y.toFixed(2)} ${((index + 0.5) * step).toFixed(1)},${((y + nextY) / 2).toFixed(2)}`
+      }
+      return `${path} L1000,${(100 - values[values.length - 1]! * 100).toFixed(2)}`
+    })
+    const musicEffect = ref<MusicEffect>('cycle')
+    const musicSensitivity = ref(100)
+    const musicVolume = ref(80)
+    let musicGroups: number[] = []
+    const musicEffects: { id: MusicEffect; name: string; caption: string }[] = [
+      { id: 'cycle', name: '彩色轮换', caption: '随鼓点推进六色，相邻已选组错开配色。' },
+      { id: 'spectrum', name: '频段混色', caption: '低、中、高频化作红、绿、蓝，随音乐混合。' },
+    ]
+    const musicEffectName = computed(() => musicEffects.find(effect => effect.id === musicEffect.value)!.name)
+    watch([musicEffect, musicSensitivity], ([effect, sensitivity]) => {
+      music.effect = effect
+      music.sensitivity = sensitivity / 100
+    })
+    watch(musicVolume, value => music.setVolume(value / 100))
     const showAll = ref(false)
     const autoOff = ref(true)
     const autoOffSeconds = ref(2)
@@ -69,6 +110,7 @@ export default defineComponent({
     )
     const activityLabel = computed(() => {
       if (!connected.value) return '设备未连接'
+      if (musicActive.value) return `音乐跟随 · ${musicEffectName.value}`
       const state = deviceState.value
       if (state?.mode === 'timer') return `约 ${Math.ceil(state.remainingMs / 1000)} 秒后关闭所选组`
       if (state?.mode === 'effect') {
@@ -125,7 +167,7 @@ export default defineComponent({
       ]
 
     const shouldWarnOnLeave = computed(() =>
-      [...heldColors.value, ...(liveMode.value ? liveColors.value : [])].some((color) =>
+      [...heldColors.value, ...(liveMode.value || musicActive.value ? liveColors.value : [])].some((color) =>
         color.some((component) => component !== 0),
       ),
     )
@@ -141,12 +183,18 @@ export default defineComponent({
       window.clearInterval(statusTimer)
       window.removeEventListener('beforeunload', warnBeforeLeave)
       liveMode.value = false
+      musicActive.value = false
+      music.dispose()
       pendingLiveColors = null
     })
 
     const flipper = new FlipperSerial(() => {
       connected.value = false
       liveMode.value = false
+      musicActive.value = false
+      music.pause()
+      musicEnergy.value = 0
+      musicSpectrum.value = emptySpectrum
       pendingLiveColors = null
       message.value = 'USB 已断开，重新连接后可以继续。'
       messageKind.value = 'error'
@@ -155,6 +203,10 @@ export default defineComponent({
 
     async function handleFailure(error: unknown) {
       liveMode.value = false
+      musicActive.value = false
+      music.pause()
+      musicEnergy.value = 0
+      musicSpectrum.value = emptySpectrum
       pendingLiveColors = null
       await flipper.close()
       connected.value = false
@@ -177,7 +229,7 @@ export default defineComponent({
     // Poll only while the command lane is idle. User actions wait for this one
     // outstanding read, so CLI replies cannot be consumed by the wrong caller.
     statusTimer = window.setInterval(() => {
-      if (!connected.value || busy.value || liveTask || statusTask) return
+      if (!connected.value || busy.value || liveTask || statusTask || musicActive.value) return
       statusTask = (async () => {
         try {
           const previousMode = deviceState.value?.mode
@@ -210,7 +262,7 @@ export default defineComponent({
       messageKind.value = 'idle'
       try {
         await statusTask
-        while (liveMode.value && pendingLiveColors) {
+        while ((liveMode.value || musicActive.value) && pendingLiveColors) {
           const colors = pendingLiveColors
           pendingLiveColors = null
           const result = await flipper.sendLive(colors)
@@ -294,14 +346,58 @@ export default defineComponent({
     }
 
     function targetColor(id: number): Rgb {
-      if (liveMode.value) return liveColors.value[id - 1]!
+      if (liveMode.value || musicActive.value) return liveColors.value[id - 1]!
       if (connected.value && deviceState.value?.mode === 'effect') return heldColors.value[id - 1]!
       return groups[id - 1]!.enabled
         ? groups[id - 1]!.color
         : heldColors.value[id - 1]!
     }
 
-    async function perform(action: 'connect' | 'disconnect' | 'send' | 'off' | 'live' | 'play' | 'stop') {
+    music.audio.onloadedmetadata = () => {
+      const duration = music.audio.duration
+      if (!Number.isFinite(duration) || duration <= 0) {
+        musicError.value = '无法读取音乐时长，请换一个可播放的音频文件。'
+        return
+      }
+      musicDuration.value = duration
+    }
+    music.audio.ontimeupdate = () => { musicTime.value = music.audio.currentTime }
+    music.audio.onpause = music.audio.onended = () => {
+      if (musicActive.value && !busy.value) void perform('music')
+    }
+    music.audio.onerror = () => {
+      musicError.value = '这份文件无法播放，请选择普通 MP3、WAV 或浏览器支持的音频文件。'
+      if (musicActive.value && !busy.value) void perform('music')
+    }
+
+    function loadMusic(event: Event) {
+      const input = event.target as HTMLInputElement
+      const file = input.files?.[0]
+      if (!file) return
+      musicFileName.value = file.name
+      musicError.value = ''
+      musicDuration.value = 0
+      musicTime.value = 0
+      musicEnergy.value = 0
+      musicSpectrum.value = emptySpectrum
+      music.load(file)
+      input.value = ''
+    }
+
+    function seekMusic(event: Event) {
+      const seconds = Number((event.target as HTMLInputElement).value)
+      if (!Number.isFinite(seconds) || seconds < 0 || seconds > musicDuration.value) return
+      pendingLiveColors = null
+      music.seek(seconds)
+      musicTime.value = seconds
+    }
+
+    function musicClock(seconds: number) {
+      return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
+    }
+
+    async function perform(action: 'connect' | 'disconnect' | 'send' | 'off' | 'live' | 'play' | 'stop' | 'music') {
+      if (busy.value) return
       if (action === 'send' && autoOff.value &&
         (!Number.isInteger(autoOffSeconds.value) || autoOffSeconds.value < 1 || autoOffSeconds.value > 3600)) {
         message.value = '关灯时间请填写 1～3600 之间的整数秒。'
@@ -313,7 +409,30 @@ export default defineComponent({
       const progress = (text: string) => {
         message.value = text
       }
+      const wasMusic = musicActive.value
       try {
+        if (action === 'music' && !wasMusic) {
+          if (!connected.value || !selection.value.length || !musicDuration.value || musicError.value) return
+          // Resume Web Audio in the button gesture, before waiting for USB.
+          try {
+            await music.prepare()
+          } catch {
+            message.value = '浏览器未能启用音频，请重新点击播放，或换用 Chrome／Edge。'
+            messageKind.value = 'error'
+            return
+          }
+        }
+        if (wasMusic) {
+          musicActive.value = false
+          music.pause()
+          musicEnergy.value = 0
+          musicSpectrum.value = emptySpectrum
+          pendingLiveColors = null
+        }
+        if (action === 'music') {
+          liveMode.value = false
+          pendingLiveColors = null
+        }
         // Stop queued colors before OFF, disconnect, or leaving live mode.
         if (action === 'off' || action === 'disconnect' || (action === 'live' && liveMode.value))
           pendingLiveColors = null
@@ -321,6 +440,11 @@ export default defineComponent({
         await liveTask
         await statusTask
         if (action !== 'connect' && action !== 'disconnect' && !connected.value) return
+        if (wasMusic && connected.value && (action === 'music' || action === 'disconnect' || action === 'stop')) {
+          const colors = heldColors.value.map((color, index) => musicGroups.includes(index) ? OFF : color)
+          updateDevice(await flipper.send(colors, null, 0, progress))
+          liveColors.value = colors
+        }
         if (action === 'connect') {
           const device = await flipper.connect(progress, connectionMethod.value)
           deviceName.value = device.name
@@ -331,7 +455,9 @@ export default defineComponent({
         } else if (action === 'disconnect') {
           await flipper.close()
           connected.value = false
-          message.value = 'USB 已断开，FZ 本机仍可操作，已启动的灯效和定时会继续执行。'
+          message.value = wasMusic
+            ? '音乐已暂停，所选组已发送关闭指令，USB 已断开。'
+            : 'USB 已断开，FZ 本机仍可操作，已启动的灯效和定时会继续执行。'
         } else if (action === 'off') {
           updateDevice(await flipper.off(progress))
           liveColors.value = Array(8).fill(OFF)
@@ -339,6 +465,41 @@ export default defineComponent({
         } else if (action === 'stop') {
           updateDevice(await flipper.stop())
           message.value = '已停止灯效或定时，并发送原先所选组的关闭指令。'
+        } else if (action === 'music') {
+          if (wasMusic) {
+            message.value = music.audio.ended
+              ? '音乐播放结束，已发送所选组的关闭指令。'
+              : '音乐已暂停，已发送所选组的关闭指令。'
+          } else {
+            musicGroups = selection.value.map(group => group.id - 1)
+            const base = heldColors.value.map((color, index) => musicGroups.includes(index) ? OFF : color)
+            // Even a silent intro must replace an earlier native effect or timer.
+            updateDevice(await flipper.send(base, null, 0, progress))
+            liveColors.value = base
+            activeScene.value = ''
+            lastLiveMs.value = 0
+            if (music.audio.ended) music.seek(0)
+            try {
+              await music.play(frame => {
+                if (!musicActive.value) return
+                const colors = [...base]
+                musicGroups.forEach((index, order) => { colors[index] = frame.colors[order % 2]! })
+                queueLive(colors)
+              }, (energy, spectrum) => {
+                if (!musicActive.value) return
+                musicEnergy.value = energy * 100
+                musicSpectrum.value = spectrum
+              })
+            } catch {
+              music.pause()
+              message.value = '音乐未能开始播放，请确认文件可播放后再次点击。'
+              messageKind.value = 'error'
+              return
+            }
+            if (!connected.value) { music.pause(); return }
+            musicActive.value = true
+            message.value = '音乐跟随已开启；暂停、结束或停止时会关闭本次所选组。'
+          }
         } else if (action === 'live') {
           if (liveMode.value) {
             liveMode.value = false
@@ -398,6 +559,22 @@ export default defineComponent({
       autoOff,
       autoOffSeconds,
       deviceState,
+      musicActive,
+      musicFileName,
+      musicError,
+      musicDuration,
+      musicTime,
+      musicEnergy,
+      musicSpectrumPath,
+      musicSpectrumTicks,
+      musicEffects,
+      musicEffect,
+      musicEffectName,
+      musicSensitivity,
+      musicVolume,
+      loadMusic,
+      seekMusic,
+      musicClock,
       activityLabel,
       effects,
       effectId,

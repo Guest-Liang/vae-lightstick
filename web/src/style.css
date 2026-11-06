@@ -1109,6 +1109,166 @@ h2 {
   font-size: 10px;
   line-height: 1.8;
 }
+.music-file-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.music-file-picker {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.music-file-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.music-file-picker:focus-within {
+  outline: 2px solid #c65e36;
+  outline-offset: 3px;
+}
+.music-file-picker.disabled {
+  opacity: 0.45;
+}
+.music-file-picker input:disabled {
+  cursor: not-allowed;
+}
+.music-file-name {
+  flex: 1 1 180px;
+  min-width: 0;
+  font-size: 11px;
+  color: #717c6b;
+  overflow-wrap: anywhere;
+}
+.music-effects {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.music-timeline,
+.music-settings,
+.music-meter-row,
+.music-spectrum,
+.music-colors {
+  margin-top: 18px;
+}
+.music-time {
+  display: flex;
+  justify-content: space-between;
+  color: #717c6b;
+  font: 11px var(--mono);
+}
+.music-panel input[type='range'] {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  margin: 3px 0 0;
+}
+.music-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.music-settings label {
+  color: #717c6b;
+  font-size: 11px;
+}
+.music-settings label > span {
+  float: right;
+  font-variant-numeric: tabular-nums;
+}
+.music-meter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #717c6b;
+  font-size: 10px;
+}
+.music-meter-row > span:last-child {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.music-meter {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #e7e8e2;
+  overflow: hidden;
+}
+.music-meter > i {
+  display: block;
+  height: 100%;
+  background: var(--orange);
+}
+.music-spectrum {
+  padding: 14px 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafbf7;
+}
+.music-spectrum-heading {
+  display: flex;
+  justify-content: space-between;
+  color: #717c6b;
+  font-size: 10px;
+}
+.music-spectrum-heading > span:last-child {
+  color: #858b7c;
+}
+.music-spectrum-plot {
+  display: block;
+  width: 100%;
+  height: 110px;
+  margin-top: 14px;
+  overflow: visible;
+  background: repeating-linear-gradient(to top, #e7e8e2 0 1px, transparent 1px 27.5px);
+}
+.music-spectrum-axis {
+  position: relative;
+  height: 12px;
+  margin-top: 8px;
+  color: #717c6b;
+  font: 9px var(--mono);
+}
+.music-spectrum-axis > span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.music-spectrum-axis > span:first-child {
+  transform: none;
+}
+.music-spectrum-axis > span:last-child {
+  transform: translateX(-100%);
+}
+.music-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.music-colors > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 11px var(--mono);
+}
+.music-colors i {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.music-error {
+  margin: 12px 0;
+  color: #b85c39;
+  font-size: 11px;
+  line-height: 1.8;
+}
+.music-panel .effect-actions {
+  align-items: center;
+}
 .status-transport {
   margin-left: auto;
   font-family: var(--mono);

@@ -59,7 +59,7 @@
                 <h2 id="group-heading">控制分组</h2>
                 <span class="count-badge">{{ selection.length }} / 8</span>
               </div>
-              <button class="text-button" @click="selectAll">
+              <button class="text-button" :disabled="musicActive" @click="selectAll">
                 {{ selection.length === 8 ? '取消全选' : '全选' }}
               </button>
             </div>
@@ -69,8 +69,8 @@
                 :class="{ selected: group.enabled }">
                 <div class="group-card-top">
                   <span class="group-id">G{{ group.id }}</span><span class="toggle"><input type="checkbox" role="switch"
-                      :aria-label="`控制 G${group.id}`" :checked="group.enabled" @change="toggleGroup(group.id)" /><span
-                      class="toggle-track" /></span>
+                      :aria-label="`控制 G${group.id}`" :checked="group.enabled" :disabled="musicActive"
+                      @change="toggleGroup(group.id)" /><span class="toggle-track" /></span>
                 </div>
                 <div class="group-card-bottom">
                   <span>第 {{ group.id }} 组</span><span class="group-color"><i :style="{
@@ -85,7 +85,7 @@
               <Icon name="chevron" :class="{ rotated: showAll }" />
             </button>
             <p class="group-footnote">
-              开关只选择分组，不会立即发射。未选分组沿用上次已发送目标色，首次为关闭。
+              {{ musicActive ? '音乐使用开始时选择的分组，暂停后可重新选择。' : '开关只选择分组，不会立即发射。未选分组沿用上次已发送目标色，首次为关闭。' }}
             </p>
           </section>
 
@@ -106,7 +106,9 @@
                   v-if="lastLiveMs"> · {{ lastLiveMs }} ms（{{ (1000 / lastLiveMs).toFixed(1) }} 次/秒）</template></span>
             </div>
             <p class="section-caption">
-              {{ liveMode ? '鼠标划过或手指拖过色块即可变色；统一操控会修改所有已开启的组。' : '先选调色分组，再点颜色。每组独立保存，黑色表示关闭。' }}
+              {{ musicActive ? '配色正由音乐控制，暂停音乐后可手动调色。' : liveMode ? '鼠标划过或手指拖过色块即可变色；统一操控会修改所有已开启的组。' :
+                '先选调色分组，再点颜色。每组独立保存，黑色表示关闭。'
+              }}
             </p>
             <div class="palette-groups" role="group" aria-label="选择当前调色分组">
               <button v-if="liveMode" type="button" class="palette-group" :class="{ active: liveUnified }"
@@ -123,14 +125,14 @@
               <span class="current-color-chip" :style="{ background: currentHex }" />
               <div class="current-color-info">
                 <span>{{ liveMode && liveUnified ? '统一配色' : `G${editingGroupId} 配色` }} <strong>{{ currentHex
-                    }}</strong></span>
+                }}</strong></span>
                 <small>RGB {{ currentColor.join(' · ') }}</small>
               </div>
             </div>
             <div class="palette-grid" :class="{ 'is-live': liveMode }" role="group" aria-label="64 色调色盘"
               @pointerdown="paintPalette" @pointermove="paintPalette" @pointerup="paintPalette">
               <button v-for="(item, index) in palette" :key="item.hex" type="button" class="palette-swatch"
-                :data-palette-index="index" :disabled="!editingGroup.enabled"
+                :data-palette-index="index" :disabled="!editingGroup.enabled || musicActive"
                 :class="{ active: currentHex === item.hex }" :style="{ background: item.hex }" :aria-label="item.hex === '#000000'
                   ? '关灯色 #000000'
                   : `选择颜色 ${item.hex}`
@@ -167,7 +169,7 @@
             <button v-if="!liveMode" class="button button-send" :disabled="!connected || !selection.length || busy"
               @click="perform('send')">
               <span>{{ busy ? '正在处理…' : '发送颜色'
-              }}<small v-if="selection.length && !busy">{{ selection.length }} 个分组</small></span>
+                }}<small v-if="selection.length && !busy">{{ selection.length }} 个分组</small></span>
               <Icon name="arrow" />
             </button>
             <button v-else class="button button-off" :disabled="!connected || busy" @click="perform('off')">
@@ -213,12 +215,99 @@
             </div>
             <p class="effect-note">灯效独立在 FZ 上运行，断开网页也会继续。再次发送颜色或开启实时模式会替换当前灯效和定时。</p>
           </section>
+          <section class="panel music-panel" aria-labelledby="music-heading">
+            <div class="section-heading">
+              <div class="section-title"><span class="step-number">04</span>
+                <h2 id="music-heading">音乐跟随</h2>
+              </div>
+              <span class="small-label">本地音乐 · 不上传</span>
+            </div>
+            <p class="section-caption">选一首音乐，让颜色随节奏轮换，或随低、中、高频混合。</p>
+            <div class="music-file-row">
+              <label class="button button-disconnect music-file-picker" :class="{ disabled: musicActive }">
+                {{ musicFileName ? '更换音乐' : '选择音乐文件' }}
+                <input type="file" accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg,.opus,.aac" aria-label="选择本地音乐文件"
+                  :disabled="musicActive" @change="loadMusic" />
+              </label>
+              <span class="music-file-name">{{ musicFileName || '支持 MP3、WAV 等浏览器可播放的音频' }}</span>
+            </div>
+            <p v-if="musicError" class="music-error" role="alert">{{ musicError }}</p>
+            <p v-else-if="musicFileName && !musicDuration" class="effect-note">正在读取音乐…</p>
+            <div class="effect-options music-effects" role="group" aria-label="选择音乐灯效">
+              <button v-for="effect in musicEffects" :key="effect.id" type="button"
+                :class="{ active: musicEffect === effect.id }" :aria-pressed="musicEffect === effect.id"
+                @click="musicEffect = effect.id">
+                <strong>{{ effect.name }}</strong><small>{{ effect.caption }}</small>
+              </button>
+            </div>
+            <div v-if="musicDuration" class="music-timeline">
+              <div class="music-time"><span>{{ musicClock(musicTime) }}</span><span>{{ musicClock(musicDuration)
+                  }}</span></div>
+              <input type="range" min="0" :max="musicDuration" step="0.1" :value="musicTime" aria-label="音乐播放进度"
+                @input="seekMusic" />
+            </div>
+            <div class="music-settings">
+              <label>跟随灵敏度 <span>{{ musicSensitivity }}%</span>
+                <input v-model.number="musicSensitivity" type="range" min="50" max="200" step="10"
+                  aria-label="音乐跟随灵敏度" />
+              </label>
+              <label>播放音量 <span>{{ Math.round(musicVolume) }}%</span>
+                <input v-model.number="musicVolume" type="range" min="0" max="100" step="any" aria-label="音乐播放音量" />
+              </label>
+            </div>
+            <div class="music-meter-row">
+              <span>音乐强度</span>
+              <div class="music-meter" role="meter" aria-label="音乐强度" :aria-valuenow="Math.round(musicEnergy)"
+                aria-valuemin="0" aria-valuemax="100">
+                <i :style="{ width: `${musicEnergy}%` }" />
+              </div>
+              <span>{{ Math.round(musicEnergy) }}%</span>
+            </div>
+            <div class="music-spectrum" role="img" aria-label="实时音乐频谱，左侧低频，右侧高频，曲线高度表示各频段强度">
+              <div class="music-spectrum-heading"><span>实时频谱</span><span>低频 → 高频</span></div>
+              <svg class="music-spectrum-plot" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="music-spectrum-colors">
+                    <stop offset="0" stop-color="#e87b4e" />
+                    <stop offset="0.5" stop-color="#71bb68" />
+                    <stop offset="1" stop-color="#528add" />
+                  </linearGradient>
+                </defs>
+                <path :d="`${musicSpectrumPath} L1000,100 L0,100 Z`" fill="url(#music-spectrum-colors)"
+                  fill-opacity="0.16" />
+                <path class="music-spectrum-line" :d="musicSpectrumPath" fill="none"
+                  stroke="url(#music-spectrum-colors)" stroke-width="2" vector-effect="non-scaling-stroke" />
+              </svg>
+              <div class="music-spectrum-axis" aria-hidden="true">
+                <span v-for="tick in musicSpectrumTicks" :key="tick.hz" :style="{ left: `${tick.position}%` }">{{
+                  tick.label
+                  }}</span>
+              </div>
+            </div>
+            <div v-if="musicActive" class="music-colors" role="group" aria-label="音乐配色预览">
+              <span v-for="group in selection" :key="group.id"><i
+                  :style="{ background: displayColor(targetColor(group.id)) }" />G{{ group.id }}</span>
+            </div>
+            <div class="effect-actions">
+              <button class="button" :class="musicActive ? 'button-disconnect' : 'button-connect'"
+                :disabled="busy || (!musicActive && (!connected || !selection.length || !musicDuration || !!musicError))"
+                @click="perform('music')">
+                <Icon :name="musicActive ? 'stop' : 'play'" />
+                {{ musicActive ? '暂停并关灯' : musicTime > 0 && musicTime < musicDuration ? '继续播放并跟随' : '播放并跟随' }} </button>
+                  <span v-if="musicActive" class="small-label">{{ musicEffectName }} · {{ selectionLabel }}</span>
+                  <span v-else-if="!connected" class="small-label">连接 FZ 后即可开始</span>
+                  <span v-else-if="!selection.length" class="small-label">先选择要跟随的分组</span>
+            </div>
+            <p class="effect-note">播放时请保持页面在前台。暂停或播完会关闭所选组；发送颜色、启动其他灯效或开启实时模式会停止音乐跟随。</p>
+          </section>
         </fieldset>
 
         <aside class="preview-column">
           <section class="preview-panel" aria-labelledby="preview-heading">
             <div class="preview-header">
-              <h2 id="preview-heading">{{ connected && deviceState?.mode === 'effect' ? '灯效目标色' : '配色预览' }}</h2>
+              <h2 id="preview-heading">{{ musicActive ? '音乐配色' : connected && deviceState?.mode === 'effect' ? '灯效目标色' :
+                '配色预览'
+                }}</h2>
               <span><i />PREVIEW</span>
             </div>
             <div class="lightstick-stage">
@@ -246,7 +335,7 @@
               <span class="preview-line" />
             </div>
             <p class="preview-note">
-              {{ connected && deviceState?.mode === 'effect' ? '预览跟随 FZ 最近发送的目标色；灯棒不会回传当前状态。' : '预览显示待发送配色；灯棒不会回传当前状态。'
+              {{ musicActive ? '预览显示音乐生成的目标色；灯棒不会回传当前状态。' : connected && deviceState?.mode === 'effect' ? '预览跟随 FZ 最近发送的目标色；灯棒不会回传当前状态。' : '预览显示待发送配色；灯棒不会回传当前状态。'
               }}
             </p>
           </section>
@@ -262,7 +351,8 @@
             <p class="section-caption">{{ liveMode ? '点击组合立即实时发送。' : '载入一个组合，再点击发送。' }}</p>
             <div class="scene-list">
               <button v-for="scene in scenes" :key="scene.name" class="scene-button"
-                :class="{ active: activeScene === scene.name }" :disabled="busy" @click="loadScene(scene)">
+                :class="{ active: activeScene === scene.name }" :disabled="busy || musicActive"
+                @click="loadScene(scene)">
                 <span class="scene-colors"><i v-for="(color, index) in scene.colors" :key="index"
                     :style="{ background: displayColor(color) }" /></span><span class="scene-text">{{ scene.name
                     }}<small>{{ scene.caption }}</small></span>
@@ -281,7 +371,7 @@
         </div>
         <span class="status-transport">{{
           connected ? firmware || 'USB 已连接' : transportLabel
-          }}</span>
+        }}</span>
         <button class="button button-off mobile-off" :disabled="!connected || busy" @click="perform('off')">
           <Icon name="power" />全部关灯
         </button>
@@ -307,6 +397,7 @@
             打开需要控制的分组开关，调色或载入双色预设，再点击“发送颜色”；开启实时模式后可直接划过调色盘。
           </li>
           <li>自动关灯可设置 1～3600 秒，计时由 FZ 执行；灯效支持红蓝交换、四色轮播和明灭交替，停止或播放结束后关闭原先所选组。</li>
+          <li>音乐跟随：选择本地音乐文件，选择彩色轮换或频段混色，再点击“播放并跟随”。音乐不上传，页面需保持在前台；暂停、播完或主动断开时会关闭本次所选组。</li>
           <li>FZ 本机：上下选项目、左右调整，短按 OK 发送，长按 OK 全部关灯。返回先停止正在运行的灯效或定时，再按返回退出。</li>
           <li>
             “全部关灯”会向 G1–G8
